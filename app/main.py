@@ -5,7 +5,10 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from pathlib import Path
+from redis import Redis
+from rq import Queue
 from app.core.logging_config import setup_logging
+from app.core.config import settings
 from app.db import models
 from app.db.database import engine, get_db
 
@@ -22,6 +25,10 @@ app = FastAPI(title="LocalTune")
 BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+
+# Setup Redis and RQ
+redis_conn = Redis.from_url(settings.redis_url)
+task_queue = Queue("downloads", connection=redis_conn)
 
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):
@@ -81,9 +88,11 @@ async def download_url(request: Request, url: str = Form(...)):
         </div>
         """
         
+    job = task_queue.enqueue("app.worker.process_download", url)
+    
     return f"""
     <div class="bg-emerald-900 border border-emerald-700 text-white px-4 py-3 rounded relative mb-4" role="alert">
       <strong class="font-bold">Success!</strong>
-      <span class="block sm:inline">Job queued for {url}</span>
+      <span class="block sm:inline">Job queued for {url} (ID: {job.id})</span>
     </div>
     """

@@ -18,7 +18,9 @@ LocalTune/
 │   ├── worker.py              # RQ worker entrypoint
 │   ├── core/                  # Configurations and singletons
 │   │   ├── config.py          # Environment settings
-│   │   └── logging_config.py  # Logger setup
+│   │   ├── logging_config.py  # Logger setup
+│   │   ├── downloader.py      # spotdl/yt-dlp logic and delta-sync
+│   │   └── notifications.py   # Telegram alerts
 │   ├── db/                    # Database models and setup
 │   │   ├── database.py        # SQLAlchemy engine and session
 │   │   └── models.py          # SQLAlchemy ORM models
@@ -29,7 +31,8 @@ LocalTune/
 │       └── dashboard.html     # Main views
 ├── tests/                     # Unit and integration tests
 │   ├── test_health.py         # Tests for health endpoint and DB
-│   └── test_ui.py             # Tests for UI routes and HTMX
+│   ├── test_ui.py             # Tests for UI routes and HTMX
+│   └── test_worker.py         # Tests for worker delta-sync and notifications
 ├── docker-compose.yml         # Production deployment
 ├── docker-compose.test.yml    # Testing deployment
 ├── Dockerfile                 # Unified container definition

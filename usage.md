@@ -12,6 +12,8 @@ Create a `.env` file in the root of the project with the following keys:
 TELEGRAM_BOT_TOKEN="your-bot-token"
 TELEGRAM_CHAT_ID="your-chat-id"
 
+*Note: You can get a `TELEGRAM_BOT_TOKEN` by talking to [@BotFather](https://t.me/botfather) on Telegram and creating a new bot. You can find your `TELEGRAM_CHAT_ID` by talking to a bot like `@userinfobot` or sending a message to your bot and checking the `getUpdates` API endpoint.*
+
 # Optional: Spotify API Keys (if spotdl requires them explicitly, though it usually handles it automatically)
 # SPOTIPY_CLIENT_ID="your-client-id"
 # SPOTIPY_CLIENT_SECRET="your-client-secret"

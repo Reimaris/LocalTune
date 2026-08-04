@@ -1,9 +1,9 @@
 # Active State
 
-**Current Status**: Milestone 2 complete (UI Integration & HTMX Routing).
+**Current Status**: Milestone 3 complete (Background Worker, Download Engine & Delta-Sync).
 
 **Immediate Next Steps**:
-1. Wait for Manager instructions on Milestone 3 (likely implementing the background download worker, database insertion, and Telegram notifications).
+1. Wait for Manager instructions on the final Milestone (e.g., UI dynamic updates and polish).
 
 **Open Bugs / Blockers**:
 - Host machine tests are limited due to Python 3.14 incompatibility with SQLAlchemy 2.0.28, but Docker tests will work normally and linting passes.
