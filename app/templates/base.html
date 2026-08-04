@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LocalTune</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <!-- AlpineJS for basic interactions like modals/tabs if needed -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        body {
+            background-color: #1e1e24;
+            color: #d1d5db;
+        }
+        .nav-link {
+            transition: all 0.2s;
+        }
+        .nav-link:hover {
+            color: #ffffff;
+            text-shadow: 0 0 8px rgba(255,255,255,0.3);
+        }
+    </style>
+</head>
+<body class="min-h-screen font-sans antialiased flex flex-col">
+    <!-- Top Navigation Bar -->
+    <nav class="bg-[#2a2a32] border-b border-[#3f3f46] shadow-md sticky top-0 z-50">
+        <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-14">
+                
+                <!-- Left side: Brand -->
+                <div class="flex items-center gap-3">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path>
+                    </svg>
+                    <a href="/" class="text-lg font-semibold text-white tracking-wide">LocalTune</a>
+                    <span class="bg-[#3f3f46] text-[#a1a1aa] text-[10px] px-2 py-0.5 rounded-full font-mono ml-2 mt-0.5">
+                        v0.1.0
+                    </span>
+                </div>
+
+                <!-- Right side: Navigation Links -->
+                <div class="flex items-center gap-6 text-sm text-[#a1a1aa] font-medium">
+                    <div class="flex items-center gap-2 mr-4">
+                        <button class="nav-link flex items-center gap-1.5 px-3 py-1.5 bg-[#d40060] hover:bg-[#a3004a] text-white rounded-md transition-colors text-xs font-medium shadow-md shadow-pink-900/20">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                            Add URL
+                        </button>
+                    </div>
+                    
+                    <a href="/" class="nav-link flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"></path></svg>
+                        Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Global Alerts (Sync results etc) -->
+    <div id="global-alert" class="max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 mt-4 empty:hidden"></div>
+
+    <!-- Main Content -->
+    <main class="flex-1 w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {% block content %}{% endblock %}
+    </main>
+
+</body>
+</html>

@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    container_name: localtune_web_test
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./app:/app/app
+      - ./test_config:/app/config
+      - ./downloads:/downloads
+    environment:
+      - REDIS_URL=redis://redis_test:6379/0
+      - DATABASE_URL=sqlite:////app/config/localtune.db
+    depends_on:
+      - redis_test
+
+  worker:
+    build: .
+    container_name: localtune_worker_test
+    command: ["rq", "worker", "-u", "redis://redis_test:6379/0", "downloads"]
+    volumes:
+      - ./app:/app/app
+      - ./test_config:/app/config
+      - ./downloads:/downloads
+    environment:
+      - REDIS_URL=redis://redis_test:6379/0
+      - DATABASE_URL=sqlite:////app/config/localtune.db
+    depends_on:
+      - redis_test
+
+  redis_test:
+    image: redis:alpine
+    container_name: localtune_redis_test
