@@ -1,0 +1,22 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Configuration and Database
+config/logs/
+config/localtune.db
+test_config/logs/
+test_config/localtune.db
+.env
+
+# Downloads
+downloads/
+
+# Pytest
+.pytest_cache/

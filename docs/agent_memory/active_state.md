@@ -1,13 +1,10 @@
 # Active State
 
-**Current Status**: Bootstrapping the initial repository structure.
+**Current Status**: Milestone 1 complete (Logging & Database Scaffold).
 
 **Immediate Next Steps**:
-1. Finish scaffolding `docs/agent_memory` and `usage.md`.
-2. Scaffold Docker files (`Dockerfile`, `docker-compose.yml`, `docker-compose.test.yml`).
-3. Scaffold the basic FastAPI application and template structure.
-4. Setup local Git repository and commit the baseline.
-5. Wait for Manager instructions on the next phase (likely implementing the UI or the download logic).
+1. Wait for Manager instructions on Milestone 2 (e.g., implementing download task routing and worker logic).
+2. Continue building the HTMX UI components for adding URLs.
 
 **Open Bugs / Blockers**:
-- None. System is in initial creation phase.
+- Host machine tests are limited due to Python 3.14 incompatibility with SQLAlchemy 2.0.28, but Docker tests will work normally and linting passes.

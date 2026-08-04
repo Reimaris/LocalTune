@@ -1,4 +1,3 @@
-import logging
 from app.core.logging_config import setup_logging
 
 # Initialize logging for the worker
