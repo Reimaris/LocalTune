@@ -13,7 +13,8 @@ def setup_db():
 @patch("app.core.downloader.subprocess.run")
 @patch("app.core.notifications.httpx.post")
 @patch("app.core.downloader.uuid")
-def test_process_youtube_download(mock_uuid, mock_post, mock_run):
+@patch("app.core.downloader.fix_permissions")
+def test_process_youtube_download(mock_fix, mock_uuid, mock_post, mock_run):
     mock_uuid.uuid4.return_value = MagicMock(hex="dummy_uuid")
     
     # Mock yt-dlp -J --flat-playlist output
@@ -31,12 +32,14 @@ def test_process_youtube_download(mock_uuid, mock_post, mock_run):
     mock_post.assert_called_once()
     args, kwargs = mock_post.call_args
     assert "Test YT Video" in kwargs['json']['text']
+    mock_fix.assert_called_once()
 
 @patch("app.core.downloader.subprocess.run")
 @patch("app.core.notifications.httpx.post")
 @patch("app.core.downloader.uuid")
+@patch("app.core.downloader.fix_permissions")
 @patch("builtins.open", new_callable=MagicMock)
-def test_process_spotify_download(mock_open, mock_uuid, mock_post, mock_run):
+def test_process_spotify_download(mock_open, mock_fix, mock_uuid, mock_post, mock_run):
     mock_uuid.uuid4.return_value = MagicMock(hex="dummy_uuid")
     
     # Mock spotdl save json output by faking the file read
@@ -52,3 +55,4 @@ def test_process_spotify_download(mock_open, mock_uuid, mock_post, mock_run):
     mock_post.assert_called_once()
     args, kwargs = mock_post.call_args
     assert "Test SP Track" in kwargs['json']['text']
+    mock_fix.assert_called_once()

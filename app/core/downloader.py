@@ -2,7 +2,6 @@ import subprocess
 import json
 import os
 import uuid
-import shutil
 import logging
 from pathlib import Path
 from sqlalchemy.orm import Session
@@ -22,11 +21,22 @@ def insert_download(db: Session, track_id: str, title: str, artist: str, file_pa
     db.add(dl)
     db.commit()
 
+def fix_permissions(path: Path):
+    """Recursively apply open permissions so the host can read/write/delete."""
+    try:
+        os.chmod(path, 0o777)
+        for root, dirs, files in os.walk(path):
+            for d in dirs:
+                os.chmod(os.path.join(root, d), 0o777)
+            for f in files:
+                os.chmod(os.path.join(root, f), 0o666)
+    except Exception as e:
+        logger.error(f"Failed to fix permissions: {e}")
+
 def handle_spotify(url: str, db: Session) -> str:
     """Handles Spotify downloads with spotdl, applying delta-sync."""
     job_id = uuid.uuid4().hex
     temp_file = f"temp_{job_id}.spotdl"
-    job_dir = DOWNLOAD_DIR / job_id
     
     try:
         # Generate metadata
@@ -51,24 +61,26 @@ def handle_spotify(url: str, db: Session) -> str:
         with open(temp_file, "w") as f:
             json.dump(to_download, f)
 
-        # Download remaining tracks into job folder
-        job_dir.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["spotdl", temp_file], cwd=str(job_dir), check=True)
+        # Download using built-in template
+        subprocess.run([
+            "spotdl", temp_file,
+            "--output", "/downloads/{list-name}/{artist} - {title}.{ext}"
+        ], check=True)
         
         # Insert to db
         for track in to_download:
             track_id = track.get("song_id", uuid.uuid4().hex)
             title = track.get("name", "Unknown Title")
             artist = track.get("artist", "Unknown Artist")
-            insert_download(db, track_id, title, artist, f"/downloads/{job_id}/{title}.mp3")
+            list_name = track.get("list_name", "")
+            file_path = f"/downloads/{list_name}/{artist} - {title}.mp3" if list_name else f"/downloads/{artist} - {title}.mp3"
+            insert_download(db, track_id, title, artist, file_path)
+
+        # Fix permissions on /downloads
+        fix_permissions(DOWNLOAD_DIR)
 
         is_playlist = len(metadata) > 1
-        main_title = metadata[0].get("name", "Spotify Playlist") if not is_playlist else "Spotify Playlist"
-
-        if is_playlist:
-            zip_path = DOWNLOAD_DIR / f"{job_id}.zip"
-            shutil.make_archive(str(DOWNLOAD_DIR / job_id), 'zip', str(job_dir))
-            logger.info(f"Zipped playlist to {zip_path}")
+        main_title = metadata[0].get("list_name", "Spotify Playlist") if is_playlist and metadata[0].get("list_name") else metadata[0].get("name", "Spotify Track")
 
         return main_title
 
@@ -81,7 +93,6 @@ def handle_youtube(url: str, db: Session) -> str:
     """Handles YouTube downloads with yt-dlp, applying delta-sync."""
     job_id = uuid.uuid4().hex
     batch_file = f"batch_{job_id}.txt"
-    job_dir = DOWNLOAD_DIR / job_id
 
     try:
         # Extract flat metadata to skip downloading large JSON dumps for videos themselves
@@ -112,15 +123,14 @@ def handle_youtube(url: str, db: Session) -> str:
             for track in to_download:
                 f.write(f"https://www.youtube.com/watch?v={track['id']}\n")
 
-        # Download remaining tracks into job folder
-        job_dir.mkdir(parents=True, exist_ok=True)
+        # Download remaining tracks using built-in template
         subprocess.run([
             "yt-dlp",
-            "--paths", str(job_dir),
             "-x",
             "--audio-format", "mp3",
             "--audio-quality", "0",
-            "-a", batch_file
+            "-a", batch_file,
+            "-o", "/downloads/%(playlist_title|)s/%(title)s.%(ext)s"
         ], check=True)
 
         # Insert to db
@@ -128,16 +138,14 @@ def handle_youtube(url: str, db: Session) -> str:
             track_id = track.get("id", uuid.uuid4().hex)
             title = track.get("title", "Unknown Title")
             artist = track.get("uploader", "Unknown Artist")
-            insert_download(db, track_id, title, artist, f"/downloads/{job_id}/{title}.mp3")
+            insert_download(db, track_id, title, artist, f"/downloads/{title}.mp3")
 
-        is_playlist = len(lines) > 1
-        if is_playlist:
-            zip_path = DOWNLOAD_DIR / f"{job_id}.zip"
-            shutil.make_archive(str(DOWNLOAD_DIR / job_id), 'zip', str(job_dir))
-            logger.info(f"Zipped playlist to {zip_path}")
+        # Fix permissions on /downloads
+        fix_permissions(DOWNLOAD_DIR)
 
         return main_title or "YouTube Video"
 
     finally:
         if os.path.exists(batch_file):
             os.remove(batch_file)
+
