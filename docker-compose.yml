@@ -9,8 +9,6 @@ services:
       - ./app:/app/app
       - ./config:/app/config
       - ./downloads:/downloads
-    env_file:
-      - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=sqlite:////app/config/localtune.db
@@ -26,8 +24,6 @@ services:
       - ./app:/app/app
       - ./config:/app/config
       - ./downloads:/downloads
-    env_file:
-      - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=sqlite:////app/config/localtune.db
