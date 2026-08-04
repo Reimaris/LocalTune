@@ -1,4 +1,5 @@
 import re
+import os
 from fastapi import FastAPI, Request, Depends, Form
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -149,4 +150,17 @@ async def api_tracks(request: Request, db: Session = Depends(get_db)):
         "done": done,
         "errors": errors
     })
+
+@app.delete("/api/tracks/{track_id}", response_class=HTMLResponse)
+async def delete_track(request: Request, track_id: int, db: Session = Depends(get_db)):
+    track = db.query(models.Download).filter(models.Download.id == track_id).first()
+    if track:
+        if track.file_path and os.path.exists(track.file_path):
+            try:
+                os.remove(track.file_path)
+            except Exception as e:
+                logger.error(f"Could not delete file {track.file_path}: {e}")
+        db.delete(track)
+        db.commit()
+    return ""
 
