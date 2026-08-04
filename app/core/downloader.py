@@ -48,8 +48,14 @@ def handle_spotify(url: str, db: Session, job_id: str) -> str:
     temp_file = f"temp_{job_id}.spotdl"
     
     try:
+        settings = db.query(models.Settings).first()
+        auth_args = []
+        if settings and settings.spotify_client_id and settings.spotify_client_secret:
+            auth_args = ["--client-id", settings.spotify_client_id, "--client-secret", settings.spotify_client_secret]
+
         # Generate metadata
-        subprocess.run(["spotdl", "--yt-dlp-args", "extractor-args=youtube:player_client=android", "save", url, "--save-file", temp_file], check=True, capture_output=True, text=True)
+        cmd = ["spotdl"] + auth_args + ["--yt-dlp-args", "extractor-args=youtube:player_client=android", "save", url, "--save-file", temp_file]
+        subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
         with open(temp_file, "r") as f:
             metadata = json.load(f)
         
@@ -72,10 +78,11 @@ def handle_spotify(url: str, db: Session, job_id: str) -> str:
             json.dump(to_download, f)
 
         # Download using built-in template
-        subprocess.run([
-            "spotdl", "--yt-dlp-args", "extractor-args=youtube:player_client=android", temp_file,
+        cmd_dl = ["spotdl"] + auth_args + [
+            "--yt-dlp-args", "extractor-args=youtube:player_client=android", temp_file,
             "--output", "/downloads/{list-name}/{artist} - {title}.{ext}"
-        ], check=True)
+        ]
+        subprocess.run(cmd_dl, check=True, timeout=3600)
         
         # Mark as completed
         for track in to_download:
