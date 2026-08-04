@@ -1,10 +1,10 @@
-import logging
 import re
 from app.db.database import SessionLocal
 from app.core.downloader import handle_spotify, handle_youtube
 from app.core.notifications import send_telegram_notification
+from app.core.logging_config import setup_logging
 
-logger = logging.getLogger(__name__)
+logger = setup_logging()
 
 def process_download(url: str):
     """
