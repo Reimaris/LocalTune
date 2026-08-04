@@ -114,7 +114,14 @@ def handle_youtube(url: str, db: Session) -> str:
 
         # Download remaining tracks into job folder
         job_dir.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["yt-dlp", "--paths", str(job_dir), "-a", batch_file], check=True)
+        subprocess.run([
+            "yt-dlp",
+            "--paths", str(job_dir),
+            "-x",
+            "--audio-format", "mp3",
+            "--audio-quality", "0",
+            "-a", batch_file
+        ], check=True)
 
         # Insert to db
         for track in to_download:
