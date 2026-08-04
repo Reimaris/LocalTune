@@ -20,3 +20,7 @@ downloads/
 
 # Pytest
 .pytest_cache/
+
+# Temporary Download Files
+temp_*.spotdl
+batch_*.txt

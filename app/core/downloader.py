@@ -105,7 +105,7 @@ def handle_youtube(url: str, db: Session, job_id: str) -> str:
 
     try:
         # Extract flat metadata to skip downloading large JSON dumps for videos themselves
-        result = subprocess.run(["yt-dlp", "-J", "--flat-playlist", url], check=True, capture_output=True, text=True)
+        result = subprocess.run(["yt-dlp", "--extractor-args", "youtube:player_client=android", "-J", "--flat-playlist", url], check=True, capture_output=True, text=True)
         to_download = []
         main_title = None
         
@@ -136,6 +136,7 @@ def handle_youtube(url: str, db: Session, job_id: str) -> str:
         # Download remaining tracks using built-in template
         subprocess.run([
             "yt-dlp",
+            "--extractor-args", "youtube:player_client=android",
             "-x",
             "--audio-format", "mp3",
             "--audio-quality", "0",
