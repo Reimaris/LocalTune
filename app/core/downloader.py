@@ -51,14 +51,15 @@ def handle_spotify(url: str, db: Session, job_id: str) -> str:
         settings = db.query(models.Settings).first()
         auth_args = []
         if settings and settings.spotify_client_id and settings.spotify_client_secret:
-            auth_args = ["--client-id", settings.spotify_client_id, "--client-secret", settings.spotify_client_secret]
+            auth_args = ["--client-id", settings.spotify_client_id.strip(), "--client-secret", settings.spotify_client_secret.strip()]
 
         # Generate metadata
         cmd = ["spotdl"] + auth_args + ["--yt-dlp-args", "extractor-args=youtube:player_client=android", "save", url, "--save-file", temp_file]
         try:
             subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"spotdl save failed: {e.stderr}")
+            error_output = e.stderr.strip() if e.stderr and e.stderr.strip() else (e.stdout.strip() if e.stdout else "Unknown error")
+            raise RuntimeError(f"spotdl save failed: {error_output}")
         
         with open(temp_file, "r") as f:
             metadata = json.load(f)
@@ -89,7 +90,8 @@ def handle_spotify(url: str, db: Session, job_id: str) -> str:
         try:
             subprocess.run(cmd_dl, check=True, capture_output=True, text=True, timeout=3600)
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"spotdl download failed: {e.stderr}")
+            error_output = e.stderr.strip() if e.stderr and e.stderr.strip() else (e.stdout.strip() if e.stdout else "Unknown error")
+            raise RuntimeError(f"spotdl download failed: {error_output}")
         
         # Mark as completed
         for track in to_download:
