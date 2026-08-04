@@ -12,13 +12,23 @@ logger = logging.getLogger(__name__)
 DOWNLOAD_DIR = Path("/downloads")
 
 def check_exists(db: Session, track_id: str) -> bool:
-    """Checks if a track ID already exists in the database."""
-    return db.query(models.Download).filter(models.Download.track_id == track_id).first() is not None
+    """Checks if a track ID already exists in the database and is completed."""
+    dl = db.query(models.Download).filter(models.Download.track_id == track_id).first()
+    return dl is not None and dl.status == "Completed"
 
-def insert_download(db: Session, track_id: str, title: str, artist: str, file_path: str):
-    """Inserts a new download record into the database."""
-    dl = models.Download(track_id=track_id, title=title, artist=artist, file_path=file_path)
-    db.add(dl)
+def insert_download(db: Session, track_id: str, title: str, artist: str, file_path: str, status: str = "Completed", job_id: str = None):
+    """Inserts or updates a download record in the database."""
+    dl = db.query(models.Download).filter(models.Download.track_id == track_id).first()
+    if dl:
+        dl.title = title
+        dl.artist = artist
+        if file_path:
+            dl.file_path = file_path
+        dl.status = status
+        dl.job_id = job_id
+    else:
+        dl = models.Download(track_id=track_id, title=title, artist=artist, file_path=file_path, status=status, job_id=job_id)
+        db.add(dl)
     db.commit()
 
 def fix_permissions(path: Path):
@@ -33,9 +43,8 @@ def fix_permissions(path: Path):
     except Exception as e:
         logger.error(f"Failed to fix permissions: {e}")
 
-def handle_spotify(url: str, db: Session) -> str:
+def handle_spotify(url: str, db: Session, job_id: str) -> str:
     """Handles Spotify downloads with spotdl, applying delta-sync."""
-    job_id = uuid.uuid4().hex
     temp_file = f"temp_{job_id}.spotdl"
     
     try:
@@ -52,6 +61,7 @@ def handle_spotify(url: str, db: Session) -> str:
             track_id = track.get("song_id")
             if not track_id or not check_exists(db, track_id):
                 to_download.append(track)
+                insert_download(db, track_id or uuid.uuid4().hex, track.get("name", "Unknown Title"), track.get("artist", "Unknown Artist"), None, "Downloading", job_id)
         
         if not to_download:
             logger.info("All tracks already downloaded.")
@@ -67,14 +77,14 @@ def handle_spotify(url: str, db: Session) -> str:
             "--output", "/downloads/{list-name}/{artist} - {title}.{ext}"
         ], check=True)
         
-        # Insert to db
+        # Mark as completed
         for track in to_download:
-            track_id = track.get("song_id", uuid.uuid4().hex)
+            track_id = track.get("song_id")
             title = track.get("name", "Unknown Title")
             artist = track.get("artist", "Unknown Artist")
             list_name = track.get("list_name", "")
             file_path = f"/downloads/{list_name}/{artist} - {title}.mp3" if list_name else f"/downloads/{artist} - {title}.mp3"
-            insert_download(db, track_id, title, artist, file_path)
+            insert_download(db, track_id, title, artist, file_path, "Completed", job_id)
 
         # Fix permissions on /downloads
         fix_permissions(DOWNLOAD_DIR)
@@ -89,9 +99,8 @@ def handle_spotify(url: str, db: Session) -> str:
             os.remove(temp_file)
 
 
-def handle_youtube(url: str, db: Session) -> str:
+def handle_youtube(url: str, db: Session, job_id: str) -> str:
     """Handles YouTube downloads with yt-dlp, applying delta-sync."""
-    job_id = uuid.uuid4().hex
     batch_file = f"batch_{job_id}.txt"
 
     try:
@@ -113,6 +122,7 @@ def handle_youtube(url: str, db: Session) -> str:
 
             if not check_exists(db, track_id):
                 to_download.append(metadata)
+                insert_download(db, track_id, metadata.get("title", "Unknown Title"), metadata.get("uploader", "Unknown Artist"), None, "Downloading", job_id)
 
         if not to_download:
             logger.info("All tracks already downloaded.")
@@ -133,12 +143,12 @@ def handle_youtube(url: str, db: Session) -> str:
             "-o", "/downloads/%(playlist_title|)s/%(title)s.%(ext)s"
         ], check=True)
 
-        # Insert to db
+        # Mark as completed
         for track in to_download:
-            track_id = track.get("id", uuid.uuid4().hex)
+            track_id = track.get("id")
             title = track.get("title", "Unknown Title")
             artist = track.get("uploader", "Unknown Artist")
-            insert_download(db, track_id, title, artist, f"/downloads/{title}.mp3")
+            insert_download(db, track_id, title, artist, f"/downloads/{title}.mp3", "Completed", job_id)
 
         # Fix permissions on /downloads
         fix_permissions(DOWNLOAD_DIR)

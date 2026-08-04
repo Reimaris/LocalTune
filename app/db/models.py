@@ -9,5 +9,16 @@ class Download(Base):
     track_id = Column(String, unique=True, index=True, nullable=False)
     title = Column(String, nullable=False)
     artist = Column(String, nullable=False)
-    file_path = Column(String, nullable=False)
+    file_path = Column(String, nullable=True)
+    status = Column(String, default="Completed")
+    job_id = Column(String, index=True, nullable=True)
     downloaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+class Settings(Base):
+    __tablename__ = "settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    telegram_bot_token = Column(String, nullable=True)
+    telegram_chat_id = Column(String, nullable=True)
+    spotify_client_id = Column(String, nullable=True)
+    spotify_client_secret = Column(String, nullable=True)

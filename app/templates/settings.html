@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-lg p-6 mb-8 max-w-2xl mx-auto">
+    <h2 class="text-xl font-bold text-white mb-6">Application Settings</h2>
+    
+    <div id="settings-alert"></div>
+    
+    <form hx-post="/settings" hx-target="#settings-alert" class="space-y-6">
+        
+        <!-- Telegram Section -->
+        <div>
+            <h3 class="text-lg font-medium text-white mb-4 border-b border-[#3f3f46] pb-2">Telegram Notifications</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-[#a1a1aa] mb-1">Bot Token</label>
+                    <input type="text" name="telegram_bot_token" value="{{ settings.telegram_bot_token or '' }}" placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11" 
+                        class="w-full bg-[#111115] border border-[#3f3f46] focus:border-[#d40060] rounded-lg px-4 py-2 text-white focus:outline-none transition-colors text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-[#a1a1aa] mb-1">Chat ID</label>
+                    <input type="text" name="telegram_chat_id" value="{{ settings.telegram_chat_id or '' }}" placeholder="123456789" 
+                        class="w-full bg-[#111115] border border-[#3f3f46] focus:border-[#d40060] rounded-lg px-4 py-2 text-white focus:outline-none transition-colors text-sm">
+                </div>
+            </div>
+        </div>
+
+        <!-- Spotify Section -->
+        <div>
+            <h3 class="text-lg font-medium text-white mb-4 border-b border-[#3f3f46] pb-2 mt-8">Spotify API (Optional)</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-[#a1a1aa] mb-1">Client ID</label>
+                    <input type="text" name="spotify_client_id" value="{{ settings.spotify_client_id or '' }}" 
+                        class="w-full bg-[#111115] border border-[#3f3f46] focus:border-[#d40060] rounded-lg px-4 py-2 text-white focus:outline-none transition-colors text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-[#a1a1aa] mb-1">Client Secret</label>
+                    <input type="password" name="spotify_client_secret" value="{{ settings.spotify_client_secret or '' }}" 
+                        class="w-full bg-[#111115] border border-[#3f3f46] focus:border-[#d40060] rounded-lg px-4 py-2 text-white focus:outline-none transition-colors text-sm">
+                </div>
+            </div>
+        </div>
+
+        <div class="pt-4 flex justify-end">
+            <button type="submit" class="bg-[#d40060] hover:bg-[#a3004a] text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md shadow-pink-900/20">
+                Save Settings
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

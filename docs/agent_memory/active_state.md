@@ -1,9 +1,9 @@
 # Active State
 
-**Current Status**: Milestone 3 complete (Background Worker, Download Engine & Delta-Sync).
+**Current Status**: Milestone 4 complete (Settings Panel, Live Progress Dashboard, and UI Polish).
 
 **Immediate Next Steps**:
-1. Wait for Manager instructions on the final Milestone (e.g., UI dynamic updates and polish).
+1. All Milestones finished. Await user feedback or new feature requests.
 
 **Open Bugs / Blockers**:
 - Host machine tests are limited due to Python 3.14 incompatibility with SQLAlchemy 2.0.28, but Docker tests will work normally and linting passes.

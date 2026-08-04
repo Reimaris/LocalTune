@@ -96,3 +96,57 @@ async def download_url(request: Request, url: str = Form(...)):
       <span class="block sm:inline">Job queued for {url} (ID: {job.id})</span>
     </div>
     """
+
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request, db: Session = Depends(get_db)):
+    db_settings = db.query(models.Settings).first()
+    if not db_settings:
+        db_settings = models.Settings()
+        db.add(db_settings)
+        db.commit()
+    
+    return templates.TemplateResponse("settings.html", {"request": request, "title": "Settings", "settings": db_settings})
+
+@app.post("/settings", response_class=HTMLResponse)
+async def update_settings(
+    request: Request,
+    telegram_bot_token: str = Form(""),
+    telegram_chat_id: str = Form(""),
+    spotify_client_id: str = Form(""),
+    spotify_client_secret: str = Form(""),
+    db: Session = Depends(get_db)
+):
+    db_settings = db.query(models.Settings).first()
+    if not db_settings:
+        db_settings = models.Settings()
+        db.add(db_settings)
+
+    db_settings.telegram_bot_token = telegram_bot_token
+    db_settings.telegram_chat_id = telegram_chat_id
+    db_settings.spotify_client_id = spotify_client_id
+    db_settings.spotify_client_secret = spotify_client_secret
+    db.commit()
+    
+    return """
+    <div class="bg-emerald-900 border border-emerald-700 text-white px-4 py-3 rounded relative mb-4" role="alert">
+      <strong class="font-bold">Success!</strong>
+      <span class="block sm:inline">Settings saved successfully.</span>
+    </div>
+    """
+
+@app.get("/api/tracks", response_class=HTMLResponse)
+async def api_tracks(request: Request, db: Session = Depends(get_db)):
+    tracks = db.query(models.Download).order_by(models.Download.downloaded_at.desc()).limit(100).all()
+    queued = db.query(models.Download).filter(models.Download.status == "Queued").count()
+    downloading = db.query(models.Download).filter(models.Download.status == "Downloading").count()
+    done = db.query(models.Download).filter(models.Download.status == "Completed").count()
+    errors = db.query(models.Download).filter(models.Download.status == "Failed").count()
+    
+    return templates.TemplateResponse("partials/track_list.html", {
+        "request": request,
+        "tracks": tracks,
+        "queued": queued + downloading,
+        "done": done,
+        "errors": errors
+    })
+
