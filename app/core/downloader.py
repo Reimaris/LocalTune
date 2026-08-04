@@ -55,7 +55,11 @@ def handle_spotify(url: str, db: Session, job_id: str) -> str:
 
         # Generate metadata
         cmd = ["spotdl"] + auth_args + ["--yt-dlp-args", "extractor-args=youtube:player_client=android", "save", url, "--save-file", temp_file]
-        subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"spotdl save failed: {e.stderr}")
+        
         with open(temp_file, "r") as f:
             metadata = json.load(f)
         
@@ -82,7 +86,10 @@ def handle_spotify(url: str, db: Session, job_id: str) -> str:
             "--yt-dlp-args", "extractor-args=youtube:player_client=android", temp_file,
             "--output", "/downloads/{list-name}/{artist} - {title}.{ext}"
         ]
-        subprocess.run(cmd_dl, check=True, timeout=3600)
+        try:
+            subprocess.run(cmd_dl, check=True, capture_output=True, text=True, timeout=3600)
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"spotdl download failed: {e.stderr}")
         
         # Mark as completed
         for track in to_download:

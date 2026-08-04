@@ -1,4 +1,5 @@
 import logging
+import sys
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
@@ -21,7 +22,7 @@ def setup_logging(log_level: str = "INFO"):
     )
 
     # Console Handler for real-time stdout tracking
-    console_handler = logging.StreamHandler()
+    console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
 
     # TimedRotatingFileHandler for persistent, rotated logging in config/logs/

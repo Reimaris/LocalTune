@@ -19,6 +19,7 @@ COPY . .
 
 # Set Python path to allow running modules from /app
 ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
 
 # Create necessary directories
 RUN mkdir -p /app/config/logs /downloads
