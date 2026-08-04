@@ -49,7 +49,7 @@ def handle_spotify(url: str, db: Session, job_id: str) -> str:
     
     try:
         # Generate metadata
-        subprocess.run(["spotdl", "save", url, "--save-file", temp_file], check=True, capture_output=True)
+        subprocess.run(["spotdl", "--yt-dlp-args", "extractor-args=youtube:player_client=android", "save", url, "--save-file", temp_file], check=True, capture_output=True, text=True)
         with open(temp_file, "r") as f:
             metadata = json.load(f)
         
@@ -73,7 +73,7 @@ def handle_spotify(url: str, db: Session, job_id: str) -> str:
 
         # Download using built-in template
         subprocess.run([
-            "spotdl", temp_file,
+            "spotdl", "--yt-dlp-args", "extractor-args=youtube:player_client=android", temp_file,
             "--output", "/downloads/{list-name}/{artist} - {title}.{ext}"
         ], check=True)
         
