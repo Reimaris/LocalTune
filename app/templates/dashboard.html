@@ -1,6 +1,22 @@
 {% extends "base.html" %}
 
 {% block content %}
+
+<!-- Download Form Area -->
+<div class="bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-lg p-6 mb-8">
+    <h2 class="text-lg font-bold text-white mb-4">Download Music</h2>
+    <form hx-post="/download" hx-target="#global-alert" hx-swap="innerHTML" class="flex gap-4">
+        <div class="flex-1">
+            <input type="url" name="url" placeholder="Paste Spotify or YouTube URL here..." required
+                class="w-full bg-[#111115] border border-[#3f3f46] focus:border-[#d40060] rounded-lg px-4 py-3 text-white focus:outline-none transition-colors">
+        </div>
+        <button type="submit" class="bg-[#d40060] hover:bg-[#a3004a] text-white font-bold py-3 px-8 rounded-lg transition-colors shadow-md shadow-pink-900/20 whitespace-nowrap flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+            Download
+        </button>
+    </form>
+</div>
+
 <!-- Stat Cards -->
 <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
     <!-- Queue Card -->

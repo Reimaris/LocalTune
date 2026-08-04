@@ -22,11 +22,14 @@ LocalTune/
 │   ├── db/                    # Database models and setup
 │   │   ├── database.py        # SQLAlchemy engine and session
 │   │   └── models.py          # SQLAlchemy ORM models
+│   ├── static/                # Static assets
+│   │   └── styles.css         # Custom CSS overrides
 │   └── templates/             # Jinja2 HTML templates
 │       ├── base.html          # Shell layout
 │       └── dashboard.html     # Main views
 ├── tests/                     # Unit and integration tests
-│   └── test_health.py         # Tests for health endpoint and DB
+│   ├── test_health.py         # Tests for health endpoint and DB
+│   └── test_ui.py             # Tests for UI routes and HTMX
 ├── docker-compose.yml         # Production deployment
 ├── docker-compose.test.yml    # Testing deployment
 ├── Dockerfile                 # Unified container definition

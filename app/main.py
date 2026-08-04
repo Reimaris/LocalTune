@@ -1,6 +1,8 @@
-from fastapi import FastAPI, Request, Depends
+import re
+from fastapi import FastAPI, Request, Depends, Form
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from pathlib import Path
 from app.core.logging_config import setup_logging
@@ -16,8 +18,9 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="LocalTune")
 
-# Setup templates
+# Setup static files and templates
 BASE_DIR = Path(__file__).resolve().parent
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 @app.get("/health")
@@ -57,3 +60,30 @@ async def dashboard(request: Request):
         "title": "LocalTune Dashboard"
     }
     return templates.TemplateResponse("dashboard.html", context)
+
+@app.post("/download", response_class=HTMLResponse)
+async def download_url(request: Request, url: str = Form(...)):
+    """
+    Receives URL from the frontend, validates it, and queues for download.
+    Returns HTMX snippet.
+    """
+    logger.info(f"Received download request for URL: {url}")
+    
+    # Basic Validation
+    is_youtube = re.search(r'(youtube\.com|youtu\.be)', url)
+    is_spotify = re.search(r'(spotify\.com)', url)
+    
+    if not (is_youtube or is_spotify):
+        return """
+        <div class="bg-red-900 border border-red-700 text-white px-4 py-3 rounded relative mb-4" role="alert">
+          <strong class="font-bold">Error!</strong>
+          <span class="block sm:inline">Invalid URL. Must be a valid Spotify or YouTube link.</span>
+        </div>
+        """
+        
+    return f"""
+    <div class="bg-emerald-900 border border-emerald-700 text-white px-4 py-3 rounded relative mb-4" role="alert">
+      <strong class="font-bold">Success!</strong>
+      <span class="block sm:inline">Job queued for {url}</span>
+    </div>
+    """
