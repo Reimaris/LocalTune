@@ -34,7 +34,7 @@ LocalTune is a self-hosted, lightweight web application for managing and downloa
 
 3. **Access the Web App:**
    Open your browser and navigate to:
-   `http://localhost:8000`
+   `http://localhost:8001`
 
 4. **Configure Settings:**
    Head to the **Settings** tab in the navigation bar to configure your Telegram Notification tokens and Spotify API credentials.

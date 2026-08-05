@@ -1,0 +1,39 @@
+[
+    {
+        "name": "Hand Of Blood",
+        "artists": [
+            "Bullet For My Valentine"
+        ],
+        "artist": "Bullet For My Valentine",
+        "genres": [
+            "",
+            ""
+        ],
+        "disc_number": 1,
+        "disc_count": 1,
+        "album_name": "Hand Of Blood",
+        "album_artist": "Bullet For My Valentine",
+        "duration": 217,
+        "year": 2005,
+        "date": "2005-01-01",
+        "track_number": 2,
+        "tracks_count": 6,
+        "song_id": "5JWDt4NZNiZQR8iMenaa7h",
+        "explicit": false,
+        "publisher": "Zomba/Trustkill/Red Ink",
+        "url": "https://open.spotify.com/track/5JWDt4NZNiZQR8iMenaa7h",
+        "isrc": "",
+        "cover_url": "https://i.scdn.co/image/ab67616d0000b2733f078a4f3a19cb6d8123b7e0",
+        "copyright_text": "",
+        "download_url": null,
+        "lyrics": null,
+        "popularity": 10,
+        "album_id": "1OEMNmMnsSLAjIC6WniFBF",
+        "list_name": null,
+        "list_url": null,
+        "list_position": null,
+        "list_length": null,
+        "artist_id": "7iWiAD5LLKyiox2grgfmUT",
+        "album_type": "album"
+    }
+]
