@@ -44,6 +44,15 @@ LocalTune is a self-hosted, lightweight web application for managing and downloa
 Simply paste a Spotify Track/Playlist URL or a YouTube Video/Music URL into the Dashboard's input field and click **Download**. 
 LocalTune will queue the job in the background, extract the metadata, cross-reference the local SQLite database, and download any missing MP3s into the `downloads/` directory.
 
+## Windows Manager GUI
+
+For Windows users, LocalTune comes with a lightweight executable GUI manager. It allows you to easily start/stop the Docker containers, open the dashboard, quickly access your downloads folder, and update the application without needing to touch the command line.
+
+**To build the manager:**
+1. Navigate to the `windows_manager` directory.
+2. Double-click the `build.bat` script.
+3. Once compiled, a `LocalTuneManager.exe` file will be generated in the root directory for you to use!
+
 ## Architecture
 
 - **Frontend:** HTML, Vanilla TailwindCSS, HTMX, AlpineJS.
