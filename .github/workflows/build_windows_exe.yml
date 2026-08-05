@@ -1,0 +1,33 @@
+name: Build Windows Manager
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Allows manual triggering from the Actions tab
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pip pyinstaller
+          
+      - name: Build Executable
+        working-directory: windows_manager
+        run: pyinstaller --noconfirm --onefile --windowed --name "LocalTuneManager" localtune_manager.py
+        
+      - name: Upload Executable Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocalTuneManager-Windows
+          path: windows_manager/dist/LocalTuneManager.exe
