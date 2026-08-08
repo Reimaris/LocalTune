@@ -12,7 +12,9 @@ WORKDIR /app
 
 # Copy requirements first for better caching
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PIP_ROOT_USER_ACTION=ignore
+RUN pip install --no-cache-dir -q -r requirements.txt
 
 # Copy the rest of the application
 COPY . .
