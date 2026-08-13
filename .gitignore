@@ -24,3 +24,7 @@ downloads/
 # Temporary Download Files
 temp_*.spotdl
 batch_*.txt
+
+# Agent Context (Local only)
+AGENT_INSTRUCTIONS.md
+docs/agent_memory/
