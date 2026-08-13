@@ -111,7 +111,7 @@ async def download_url(
         </div>
         """
         
-    job = task_queue.enqueue("app.worker.process_download", url=url, media_type=media_type, file_format=file_format)
+    job = task_queue.enqueue("app.worker.process_download", url=url, media_type=media_type, file_format=file_format, job_timeout=14400)
     
     try:
         new_download = models.Download(
