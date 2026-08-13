@@ -74,7 +74,7 @@ async def download_url(
     request: Request,
     url: str = Form(...),
     media_type: str = Form("audio"),
-    file_format: str = Form("mp3"),
+    file_format: str = Form("opus"),
     db: Session = Depends(get_db)
 ):
     """

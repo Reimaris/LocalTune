@@ -43,7 +43,7 @@ def fix_permissions(path: Path):
     except Exception as e:
         logger.error(f"Failed to fix permissions: {e}")
 
-def handle_spotify(url: str, db: Session, job_id: str, file_format: str = "mp3") -> str:
+def handle_spotify(url: str, db: Session, job_id: str, file_format: str = "opus") -> str:
     """Handles Spotify downloads with spotdl, applying delta-sync."""
     temp_file = f"temp_{job_id}.spotdl"
     
@@ -122,7 +122,7 @@ def handle_spotify(url: str, db: Session, job_id: str, file_format: str = "mp3")
             os.remove(temp_file)
 
 
-def handle_youtube(url: str, db: Session, job_id: str, media_type: str = "audio", file_format: str = "mp3") -> str:
+def handle_youtube(url: str, db: Session, job_id: str, media_type: str = "audio", file_format: str = "opus") -> str:
     """Handles YouTube downloads with yt-dlp, applying delta-sync."""
     batch_file = f"batch_{job_id}.txt"
 

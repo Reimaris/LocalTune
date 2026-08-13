@@ -5,7 +5,7 @@
 <!-- Download Form Area -->
 <div class="bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-lg p-6 mb-8">
     <h2 class="text-lg font-bold text-white mb-4">Download Music</h2>
-    <form hx-post="/download" hx-target="#global-alert" hx-swap="innerHTML" hx-on::after-request="this.reset(); url=''" class="flex flex-col lg:flex-row gap-4" x-data="{ url: '', audioFormat: 'mp3', videoFormat: 'mp4', fileFormat: 'mp3' }">
+    <form hx-post="/download" hx-target="#global-alert" hx-swap="innerHTML" hx-on::after-request="this.reset(); url=''" class="flex flex-col lg:flex-row gap-4" x-data="{ url: '', audioFormat: 'opus', videoFormat: 'mkv', fileFormat: 'opus' }">
         <input type="hidden" name="file_format" :value="fileFormat">
         
         <div class="flex-1 relative">

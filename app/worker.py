@@ -9,7 +9,7 @@ from app.core.logging_config import setup_logging
 
 logger = setup_logging()
 
-def process_download(url: str, media_type: str = "audio", file_format: str = "mp3"):
+def process_download(url: str, media_type: str = "audio", file_format: str = "opus"):
     """
     Background task to process downloads, apply delta-sync, and notify.
     """
