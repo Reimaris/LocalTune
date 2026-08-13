@@ -1,7 +1,7 @@
 fastapi==0.103.2
 uvicorn==0.23.2
 Jinja2>=3.1.5
-python-multipart==0.0.9
+python-multipart>=0.0.20
 rq
 redis==5.0.3
 SQLAlchemy==2.0.28
