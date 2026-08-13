@@ -16,7 +16,7 @@ def check_exists(db: Session, track_id: str) -> bool:
     dl = db.query(models.Download).filter(models.Download.track_id == track_id).first()
     return dl is not None and dl.status == "Completed"
 
-def insert_download(db: Session, track_id: str, title: str, artist: str, file_path: str, status: str = "Completed", job_id: str = None):
+def insert_download(db: Session, track_id: str, title: str, artist: str, file_path: str, status: str = "Completed", job_id: str = None, job_title: str = None):
     """Inserts or updates a download record in the database."""
     dl = db.query(models.Download).filter(models.Download.track_id == track_id).first()
     if dl:
@@ -26,8 +26,9 @@ def insert_download(db: Session, track_id: str, title: str, artist: str, file_pa
             dl.file_path = file_path
         dl.status = status
         dl.job_id = job_id
+        dl.job_title = job_title
     else:
-        dl = models.Download(track_id=track_id, title=title, artist=artist, file_path=file_path, status=status, job_id=job_id)
+        dl = models.Download(track_id=track_id, title=title, artist=artist, file_path=file_path, status=status, job_id=job_id, job_title=job_title)
         db.add(dl)
     db.commit()
 
@@ -72,17 +73,21 @@ def handle_spotify(url: str, db: Session, job_id: str, file_format: str = "opus"
         
         if not metadata:
             return "Empty URL"
+            
+        is_playlist = len(metadata) > 1
+        main_title = metadata[0].get("list_name", "Spotify Playlist") if is_playlist and metadata[0].get("list_name") else metadata[0].get("name", "Spotify Track")
+        job_title_to_save = main_title if is_playlist else None
 
         to_download = []
         for track in metadata:
             track_id = track.get("song_id")
             if not track_id or not check_exists(db, track_id):
                 to_download.append(track)
-                insert_download(db, track_id or uuid.uuid4().hex, track.get("name", "Unknown Title"), track.get("artist", "Unknown Artist"), None, "Downloading", job_id)
+                insert_download(db, track_id or uuid.uuid4().hex, track.get("name", "Unknown Title"), track.get("artist", "Unknown Artist"), None, "Downloading", job_id, job_title_to_save)
         
         if not to_download:
             logger.info("All tracks already downloaded.")
-            return metadata[0].get("name", "Spotify Tracks")
+            return main_title
 
         # Update metadata file for delta sync
         with open(temp_file, "w") as f:
@@ -107,13 +112,10 @@ def handle_spotify(url: str, db: Session, job_id: str, file_format: str = "opus"
             artist = track.get("artist", "Unknown Artist")
             list_name = track.get("list_name", "")
             file_path = f"/downloads/{list_name}/{artist} - {title}.{file_format}" if list_name else f"/downloads/{artist} - {title}.{file_format}"
-            insert_download(db, track_id, title, artist, file_path, "Completed", job_id)
+            insert_download(db, track_id, title, artist, file_path, "Completed", job_id, job_title_to_save)
 
         # Fix permissions on /downloads
         fix_permissions(DOWNLOAD_DIR)
-
-        is_playlist = len(metadata) > 1
-        main_title = metadata[0].get("list_name", "Spotify Playlist") if is_playlist and metadata[0].get("list_name") else metadata[0].get("name", "Spotify Track")
 
         return main_title
 
@@ -137,26 +139,32 @@ def handle_youtube(url: str, db: Session, job_id: str, media_type: str = "audio"
             db.commit()
             
         to_download = []
-        main_title = None
         
-        lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-        for line in lines:
-            metadata = json.loads(line)
-            if main_title is None:
-                main_title = metadata.get("title", "YouTube Video")
-
-            track_id = metadata.get("id")
-            # If flat-playlist didn't yield an id, fallback
+        metadata = json.loads(result.stdout)
+        main_title = metadata.get("title", "YouTube Video")
+        entries = metadata.get("entries")
+        
+        if entries:
+            is_playlist = True
+            job_title_to_save = main_title
+            tracks_data = entries
+        else:
+            is_playlist = False
+            job_title_to_save = None
+            tracks_data = [metadata]
+        
+        for track in tracks_data:
+            track_id = track.get("id")
             if not track_id:
                 track_id = uuid.uuid4().hex
 
             if not check_exists(db, track_id):
-                to_download.append(metadata)
-                insert_download(db, track_id, metadata.get("title", "Unknown Title"), metadata.get("uploader", "Unknown Artist"), None, "Downloading", job_id)
+                to_download.append(track)
+                insert_download(db, track_id, track.get("title", "Unknown Title"), track.get("uploader", "Unknown Artist"), None, "Downloading", job_id, job_title_to_save)
 
         if not to_download:
             logger.info("All tracks already downloaded.")
-            return main_title or "YouTube Video"
+            return main_title
 
         # Create batch file to avoid subprocess argument limit
         with open(batch_file, "w") as f:
@@ -191,12 +199,12 @@ def handle_youtube(url: str, db: Session, job_id: str, media_type: str = "audio"
             track_id = track.get("id")
             title = track.get("title", "Unknown Title")
             artist = track.get("uploader", "Unknown Artist")
-            insert_download(db, track_id, title, artist, f"/downloads/{title}.{file_format}", "Completed", job_id)
+            insert_download(db, track_id, title, artist, f"/downloads/{title}.{file_format}", "Completed", job_id, job_title_to_save)
 
         # Fix permissions on /downloads
         fix_permissions(DOWNLOAD_DIR)
 
-        return main_title or "YouTube Video"
+        return main_title
 
     finally:
         if os.path.exists(batch_file):

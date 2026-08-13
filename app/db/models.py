@@ -12,6 +12,7 @@ class Download(Base):
     file_path = Column(String, nullable=True)
     status = Column(String, default="Completed")
     job_id = Column(String, index=True, nullable=True)
+    job_title = Column(String, nullable=True)
     downloaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 class Settings(Base):

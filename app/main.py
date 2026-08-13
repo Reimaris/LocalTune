@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from pathlib import Path
 from redis import Redis
 from rq import Queue
@@ -19,6 +20,13 @@ logger.info("Starting LocalTune application")
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
+
+try:
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE downloads ADD COLUMN job_title VARCHAR"))
+        conn.commit()
+except Exception:
+    pass
 
 app = FastAPI(title="LocalTune")
 
@@ -165,15 +173,49 @@ async def update_settings(
 
 @app.get("/api/tracks", response_class=HTMLResponse)
 async def api_tracks(request: Request, db: Session = Depends(get_db)):
-    tracks = db.query(models.Download).order_by(models.Download.downloaded_at.desc()).limit(100).all()
+    tracks = db.query(models.Download).order_by(models.Download.downloaded_at.desc()).limit(150).all()
     queued = db.query(models.Download).filter(models.Download.status == "Queued").count()
     downloading = db.query(models.Download).filter(models.Download.status == "Downloading").count()
     done = db.query(models.Download).filter(models.Download.status == "Completed").count()
     errors = db.query(models.Download).filter(models.Download.status == "Failed").count()
     
+    grouped_jobs = {}
+    for t in tracks:
+        if t.job_id:
+            if t.job_id not in grouped_jobs:
+                grouped_jobs[t.job_id] = []
+            grouped_jobs[t.job_id].append(t)
+            
+    seen_jobs = set()
+    display_items = []
+    
+    for t in tracks:
+        if not t.job_id or not t.job_title:
+            display_items.append({"type": "track", "item": t})
+        else:
+            if t.job_id not in seen_jobs:
+                seen_jobs.add(t.job_id)
+                job_tracks = grouped_jobs[t.job_id]
+                
+                statuses = [child.status for child in job_tracks]
+                if "Downloading" in statuses or "Queued" in statuses or "Fetching Metadata" in statuses:
+                    status = "Downloading"
+                elif "Failed" in statuses and "Completed" not in statuses:
+                    status = "Failed"
+                else:
+                    status = "Completed"
+                    
+                display_items.append({
+                    "type": "playlist",
+                    "title": t.job_title,
+                    "job_id": t.job_id,
+                    "status": status,
+                    "tracks": job_tracks
+                })
+    
     return templates.TemplateResponse("partials/track_list.html", {
         "request": request,
-        "tracks": tracks,
+        "display_items": display_items,
         "queued": queued + downloading,
         "done": done,
         "errors": errors
