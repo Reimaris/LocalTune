@@ -31,3 +31,11 @@ jobs:
         with:
           name: LocalTuneManager-Windows
           path: windows_manager/dist/LocalTuneManager.exe
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "latest"
+          name: "Latest Windows Manager"
+          body: "Automated build of the latest LocalTune Manager for Windows."
+          files: windows_manager/dist/LocalTuneManager.exe
