@@ -4,6 +4,8 @@ import os
 import uuid
 import logging
 from pathlib import Path
+from spotdl.utils.formatter import sanitize_string as spotdl_sanitize
+from yt_dlp.utils import sanitize_filename as yt_dlp_sanitize
 from sqlalchemy.orm import Session
 from app.db import models
 
@@ -111,7 +113,12 @@ def handle_spotify(url: str, db: Session, job_id: str, file_format: str = "opus"
             title = track.get("name", "Unknown Title")
             artist = track.get("artist", "Unknown Artist")
             list_name = track.get("list_name", "")
-            file_path = f"/downloads/{list_name}/{artist} - {title}.{file_format}" if list_name else f"/downloads/{artist} - {title}.{file_format}"
+            
+            sanitized_title = spotdl_sanitize(title)
+            sanitized_artist = spotdl_sanitize(artist)
+            sanitized_list_name = spotdl_sanitize(list_name) if list_name else ""
+            
+            file_path = f"/downloads/{sanitized_list_name}/{sanitized_artist} - {sanitized_title}.{file_format}" if list_name else f"/downloads/{sanitized_artist} - {sanitized_title}.{file_format}"
             insert_download(db, track_id, title, artist, file_path, "Completed", job_id, job_title_to_save)
 
         # Fix permissions on /downloads
@@ -179,6 +186,7 @@ def handle_youtube(url: str, db: Session, job_id: str, media_type: str = "audio"
                 "-x",
                 "--audio-format", file_format,
                 "--audio-quality", "0",
+                "--windows-filenames",
                 "-a", batch_file,
                 "-o", "/downloads/%(playlist_title|)s/%(title)s.%(ext)s"
             ]
@@ -188,6 +196,7 @@ def handle_youtube(url: str, db: Session, job_id: str, media_type: str = "audio"
                 "--extractor-args", "youtube:player_client=android",
                 "-f", "bestvideo+bestaudio/best",
                 "--merge-output-format", file_format,
+                "--windows-filenames",
                 "-a", batch_file,
                 "-o", "/downloads/%(playlist_title|)s/%(title)s.%(ext)s"
             ]
@@ -199,7 +208,12 @@ def handle_youtube(url: str, db: Session, job_id: str, media_type: str = "audio"
             track_id = track.get("id")
             title = track.get("title", "Unknown Title")
             artist = track.get("uploader", "Unknown Artist")
-            insert_download(db, track_id, title, artist, f"/downloads/{title}.{file_format}", "Completed", job_id, job_title_to_save)
+            
+            sanitized_title = yt_dlp_sanitize(title)
+            sanitized_playlist_title = yt_dlp_sanitize(main_title) if is_playlist else ""
+            
+            file_path = f"/downloads/{sanitized_playlist_title}/{sanitized_title}.{file_format}" if is_playlist else f"/downloads/{sanitized_title}.{file_format}"
+            insert_download(db, track_id, title, artist, file_path, "Completed", job_id, job_title_to_save)
 
         # Fix permissions on /downloads
         fix_permissions(DOWNLOAD_DIR)
