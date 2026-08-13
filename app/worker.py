@@ -39,5 +39,6 @@ def process_download(url: str, media_type: str = "audio", file_format: str = "op
         for track in failed_tracks:
             track.status = "Failed"
         db.commit()
+        send_telegram_notification(f"{url}\n\nError: {str(e)[:100]}...", is_error=True)
     finally:
         db.close()
