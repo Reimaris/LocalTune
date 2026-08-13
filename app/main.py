@@ -74,7 +74,8 @@ async def download_url(
     request: Request,
     url: str = Form(...),
     media_type: str = Form("audio"),
-    file_format: str = Form("mp3")
+    file_format: str = Form("mp3"),
+    db: Session = Depends(get_db)
 ):
     """
     Receives URL from the frontend, validates it, and queues for download.
@@ -103,6 +104,20 @@ async def download_url(
         """
         
     job = task_queue.enqueue("app.worker.process_download", url=url, media_type=media_type, file_format=file_format)
+    
+    try:
+        new_download = models.Download(
+            track_id=job.id,
+            title=url,
+            artist="Pending Metadata...",
+            status="Queued",
+            job_id=job.id
+        )
+        db.add(new_download)
+        db.commit()
+    except Exception as e:
+        logger.error(f"Failed to insert placeholder download: {e}")
+        db.rollback()
     
     return f"""
     <div class="bg-emerald-900 border border-emerald-700 text-white px-4 py-3 rounded relative mb-4" role="alert">

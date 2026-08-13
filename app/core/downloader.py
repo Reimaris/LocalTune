@@ -63,6 +63,12 @@ def handle_spotify(url: str, db: Session, job_id: str, file_format: str = "mp3")
         
         with open(temp_file, "r") as f:
             metadata = json.load(f)
+            
+        # Delete placeholder now that we have real metadata
+        placeholder = db.query(models.Download).filter(models.Download.track_id == job_id).first()
+        if placeholder:
+            db.delete(placeholder)
+            db.commit()
         
         if not metadata:
             return "Empty URL"
@@ -123,6 +129,13 @@ def handle_youtube(url: str, db: Session, job_id: str, media_type: str = "audio"
     try:
         # Extract flat metadata to skip downloading large JSON dumps for videos themselves
         result = subprocess.run(["yt-dlp", "--extractor-args", "youtube:player_client=android", "-J", "--flat-playlist", url], check=True, capture_output=True, text=True)
+        
+        # Delete placeholder now that we have real metadata
+        placeholder = db.query(models.Download).filter(models.Download.track_id == job_id).first()
+        if placeholder:
+            db.delete(placeholder)
+            db.commit()
+            
         to_download = []
         main_title = None
         
