@@ -29,6 +29,12 @@ def process_download(url: str, media_type: str = "audio", file_format: str = "op
             logger.error("Unsupported URL type in worker.")
             return
 
+        # Remove the placeholder row now that real tracks are registered
+        placeholder = db.query(models.Download).filter(models.Download.track_id == job_id).first()
+        if placeholder:
+            db.delete(placeholder)
+            db.commit()
+
         logger.info(f"Download handled successfully: {title}")
         metadata_str = f"URL: {url}\nFormat: {file_format.upper()} ({media_type.capitalize()})"
         send_telegram_notification(f"{title}\n\n{metadata_str}")
