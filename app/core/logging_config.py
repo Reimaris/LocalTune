@@ -25,6 +25,17 @@ def setup_logging(log_level: str = "INFO"):
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
 
+    # File Handler for daily rotation (midnight) keeping 5 backups
+    file_handler = TimedRotatingFileHandler(
+        filename=log_dir / "localtune.log",
+        when="midnight",
+        interval=1,
+        backupCount=5,
+        encoding="utf-8"
+    )
+    file_handler.suffix = "%Y-%m-%d"
+    file_handler.setFormatter(formatter)
+
     # Configure the root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
@@ -34,6 +45,7 @@ def setup_logging(log_level: str = "INFO"):
         root_logger.handlers.clear()
         
     root_logger.addHandler(console_handler)
+    root_logger.addHandler(file_handler)
     
     # Silence noisy third-party loggers
     logging.getLogger("httpx").setLevel(logging.WARNING)
