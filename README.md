@@ -49,11 +49,9 @@ LocalTune will queue the job in the background, extract the metadata, cross-refe
 For Windows users, LocalTune comes with a lightweight executable GUI manager. It allows you to easily start/stop the Docker containers, open the dashboard, quickly access your downloads folder, and update the application without needing to touch the command line.
 
 **Download & Install:**
-1. Go to the **Releases** section on the right side of this GitHub page.
-2. Download the latest `LocalTuneManager.exe`.
-3. Place it wherever you want and double-click it to run!
+👉 **[Read the Complete Windows Installation Guide](WINDOWS_INSTALLATION.md)** for step-by-step instructions (perfect if you don't have Docker or Git installed yet).
 
-*(For developers wanting to build it from source: Navigate to the `windows_manager` directory and run `build.bat`)*
+*(For developers wanting to build the manager from source: Navigate to the `windows_manager` directory and run `build.bat`)*
 
 ## Architecture
 
