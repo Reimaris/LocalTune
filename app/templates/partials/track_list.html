@@ -57,7 +57,7 @@
         {% if item.type == 'track' %}
             {% set track = item.item %}
             <tbody class="divide-y divide-[#3f3f46] text-sm">
-                <tr class="hover:bg-[#2a2a32] transition-colors group" x-show="search === '' || '{{ track.title | lower }}'.includes(search.toLowerCase()) || '{{ track.artist | lower }}'.includes(search.toLowerCase())">
+                <tr class="hover:bg-[#2a2a32] transition-colors group" data-title="{{ track.title | lower | e }}" data-artist="{{ track.artist | lower | e }}" x-show="search === '' || $el.dataset.title.includes(search.toLowerCase()) || $el.dataset.artist.includes(search.toLowerCase())">
                     <td class="px-6 py-4">
                         <span class="font-bold text-white">{{ track.title }}</span>
                     </td>
@@ -76,12 +76,12 @@
                 </tr>
             </tbody>
         {% else %}
-            <tbody x-data="{ expanded: false }" class="divide-y divide-[#3f3f46] text-sm">
+            <tbody class="divide-y divide-[#3f3f46] text-sm">
                 <!-- Parent Playlist Row -->
-                <tr class="hover:bg-[#2a2a32] transition-colors group cursor-pointer bg-[#24242b]" @click="expanded = !expanded" x-show="search === '' || '{{ item.title | lower }}'.includes(search.toLowerCase())">
+                <tr class="hover:bg-[#2a2a32] transition-colors group cursor-pointer bg-[#24242b]" @click="expandedPlaylists['{{ item.job_id }}'] = !expandedPlaylists['{{ item.job_id }}']" data-title="{{ item.title | lower | e }}" x-show="search === '' || $el.dataset.title.includes(search.toLowerCase())">
                     <td class="px-6 py-4">
                         <div class="flex items-center gap-2">
-                            <svg class="w-5 h-5 text-[#a1a1aa] transition-transform duration-200" :class="expanded ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                            <svg class="w-5 h-5 text-[#a1a1aa] transition-transform duration-200" :class="expandedPlaylists['{{ item.job_id }}'] ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                             <svg class="w-5 h-5 text-[#d40060]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
                             <span class="font-bold text-white">{{ item.title }}</span>
                             <span class="text-xs text-[#a1a1aa] bg-[#3f3f46] px-2 py-0.5 rounded-full ml-2">{{ item.tracks | length }} tracks</span>
@@ -96,7 +96,7 @@
                 
                 <!-- Child Track Rows -->
                 {% for track in item.tracks %}
-                <tr class="hover:bg-[#3f3f46] transition-colors group bg-[#16161b]" x-show="expanded && (search === '' || '{{ track.title | lower }}'.includes(search.toLowerCase()) || '{{ track.artist | lower }}'.includes(search.toLowerCase()))" x-cloak>
+                <tr class="hover:bg-[#3f3f46] transition-colors group bg-[#16161b]" data-title="{{ track.title | lower | e }}" data-artist="{{ track.artist | lower | e }}" x-show="expandedPlaylists['{{ item.job_id }}'] && (search === '' || $el.dataset.title.includes(search.toLowerCase()) || $el.dataset.artist.includes(search.toLowerCase()))" x-cloak>
                     <td class="px-6 py-4 pl-14">
                         <span class="font-medium text-white">{{ track.title }}</span>
                     </td>
