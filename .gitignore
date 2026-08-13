@@ -22,7 +22,7 @@ downloads/
 .pytest_cache/
 
 # Temporary Download Files
-temp_*.spotdl
+*.spotdl
 batch_*.txt
 
 # Agent Context (Local only)
