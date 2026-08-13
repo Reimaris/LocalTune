@@ -56,7 +56,7 @@ def handle_spotify(url: str, db: Session, job_id: str, file_format: str = "opus"
         # Generate metadata
         cmd = ["spotdl"] + auth_args + ["--yt-dlp-args", "extractor-args=youtube:player_client=android", "save", url, "--save-file", temp_file]
         try:
-            subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
+            subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=3600)
         except subprocess.CalledProcessError as e:
             error_output = e.stderr.strip() if e.stderr and e.stderr.strip() else (e.stdout.strip() if e.stdout else "Unknown error")
             raise RuntimeError(f"spotdl save failed: {error_output}")
