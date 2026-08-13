@@ -30,7 +30,8 @@ def process_download(url: str, media_type: str = "audio", file_format: str = "op
             return
 
         logger.info(f"Download handled successfully: {title}")
-        send_telegram_notification(title)
+        metadata_str = f"URL: {url}\nFormat: {file_format.upper()} ({media_type.capitalize()})"
+        send_telegram_notification(f"{title}\n\n{metadata_str}")
         
     except Exception as e:
         logger.error(f"Worker failed processing {url}: {e}", exc_info=True)
@@ -39,6 +40,7 @@ def process_download(url: str, media_type: str = "audio", file_format: str = "op
         for track in failed_tracks:
             track.status = "Failed"
         db.commit()
-        send_telegram_notification(f"{url}\n\nError: {str(e)[:100]}...", is_error=True)
+        metadata_str = f"URL: {url}\nFormat: {file_format.upper()} ({media_type.capitalize()})\nError: {str(e)[:200]}"
+        send_telegram_notification(f"Processing Error\n\n{metadata_str}", is_error=True)
     finally:
         db.close()
