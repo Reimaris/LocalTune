@@ -135,6 +135,8 @@ class ManagerApp:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     creationflags=creationflags
                 )
                 
@@ -202,18 +204,27 @@ class ManagerApp:
             cwd = get_project_dir()
             creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             
+            env = os.environ.copy()
+            env["BUILDKIT_PROGRESS"] = "plain"
+            
             try:
                 self.log("\n> git pull")
-                p1 = subprocess.Popen(["git", "pull"], cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, creationflags=creationflags)
+                p1 = subprocess.Popen(["git", "pull"], cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", creationflags=creationflags)
                 for line in p1.stdout:
                     self.q.put(("cmd", line))
                 p1.wait()
                 
-                self.log("\n> docker compose up --build -d")
-                p2 = subprocess.Popen(["docker", "compose", "up", "--build", "-d"], cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, creationflags=creationflags)
+                self.log("\n> docker compose build --progress=plain")
+                p2 = subprocess.Popen(["docker", "compose", "build", "--progress=plain"], cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", env=env, creationflags=creationflags)
                 for line in p2.stdout:
                     self.q.put(("cmd", line))
                 p2.wait()
+                
+                self.log("\n> docker compose up -d")
+                p3 = subprocess.Popen(["docker", "compose", "up", "-d"], cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", env=env, creationflags=creationflags)
+                for line in p3.stdout:
+                    self.q.put(("cmd", line))
+                p3.wait()
                 
                 self.log("Update completed!")
             except Exception as e:
