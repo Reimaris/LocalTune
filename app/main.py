@@ -70,7 +70,12 @@ async def dashboard(request: Request):
     return templates.TemplateResponse("dashboard.html", context)
 
 @app.post("/download", response_class=HTMLResponse)
-async def download_url(request: Request, url: str = Form(...)):
+async def download_url(
+    request: Request,
+    url: str = Form(...),
+    media_type: str = Form("audio"),
+    file_format: str = Form("mp3")
+):
     """
     Receives URL from the frontend, validates it, and queues for download.
     Returns HTMX snippet.
@@ -89,7 +94,15 @@ async def download_url(request: Request, url: str = Form(...)):
         </div>
         """
         
-    job = task_queue.enqueue("app.worker.process_download", url)
+    if is_spotify and media_type == "video":
+        return """
+        <div class="bg-red-900 border border-red-700 text-white px-4 py-3 rounded relative mb-4" role="alert">
+          <strong class="font-bold">Error!</strong>
+          <span class="block sm:inline">Spotify does not support video downloads. Please select Music.</span>
+        </div>
+        """
+        
+    job = task_queue.enqueue("app.worker.process_download", url=url, media_type=media_type, file_format=file_format)
     
     return f"""
     <div class="bg-emerald-900 border border-emerald-700 text-white px-4 py-3 rounded relative mb-4" role="alert">

@@ -5,15 +5,46 @@
 <!-- Download Form Area -->
 <div class="bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-lg p-6 mb-8">
     <h2 class="text-lg font-bold text-white mb-4">Download Music</h2>
-    <form hx-post="/download" hx-target="#global-alert" hx-swap="innerHTML" hx-on::after-request="this.reset()" class="flex gap-4">
-        <div class="flex-1">
-            <input type="url" name="url" placeholder="Paste Spotify or YouTube URL here..." required autocomplete="off"
+    <form hx-post="/download" hx-target="#global-alert" hx-swap="innerHTML" hx-on::after-request="this.reset(); url=''" class="flex flex-col lg:flex-row gap-4" x-data="{ url: '', audioFormat: 'mp3', videoFormat: 'mp4', fileFormat: 'mp3' }">
+        <input type="hidden" name="file_format" :value="fileFormat">
+        
+        <div class="flex-1 relative">
+            <input type="url" name="url" x-model="url" placeholder="Paste Spotify or YouTube URL here..." required autocomplete="off"
                 class="w-full bg-[#111115] border border-[#3f3f46] focus:border-[#d40060] rounded-lg px-4 py-3 text-white focus:outline-none transition-colors">
         </div>
-        <button type="submit" class="bg-[#d40060] hover:bg-[#a3004a] text-white font-bold py-3 px-8 rounded-lg transition-colors shadow-md shadow-pink-900/20 whitespace-nowrap flex items-center gap-2">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-            Download
-        </button>
+        
+        <div class="flex gap-2 flex-wrap">
+            <!-- Music Button -->
+            <div class="relative flex" x-data="{ open: false }">
+                <button type="submit" name="media_type" value="audio" @click="fileFormat = audioFormat" class="bg-[#d40060] hover:bg-[#a3004a] text-white font-bold py-3 px-4 sm:px-6 rounded-l-lg transition-colors shadow-md shadow-pink-900/20 whitespace-nowrap flex items-center gap-2">
+                    <svg class="w-5 h-5 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
+                    Music (<span x-text="audioFormat"></span>)
+                </button>
+                <button type="button" @click="open = !open" @click.away="open = false" class="bg-[#b30052] hover:bg-[#a3004a] text-white px-2 rounded-r-lg border-l border-[#d40060] transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                </button>
+                <div x-show="open" x-transition class="absolute top-full right-0 mt-1 bg-[#24242b] border border-[#3f3f46] rounded-lg shadow-lg overflow-hidden z-10 w-24" style="display: none;">
+                    <button type="button" @click="audioFormat = 'mp3'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white">mp3</button>
+                    <button type="button" @click="audioFormat = 'opus'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white">opus</button>
+                    <button type="button" @click="audioFormat = 'flac'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white">flac</button>
+                </div>
+            </div>
+
+            <!-- Video Button -->
+            <div class="relative flex" x-data="{ open: false }">
+                <button type="submit" name="media_type" value="video" @click="fileFormat = videoFormat" :disabled="url.includes('spotify.com')" :class="url.includes('spotify.com') ? 'opacity-50 cursor-not-allowed bg-[#3f3f46]' : 'bg-[#007acc] hover:bg-[#005c99] text-white'" class="font-bold py-3 px-4 sm:px-6 rounded-l-lg transition-colors shadow-md whitespace-nowrap flex items-center gap-2">
+                    <svg class="w-5 h-5 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                    Video (<span x-text="videoFormat"></span>)
+                </button>
+                <button type="button" @click="open = !open" @click.away="open = false" :disabled="url.includes('spotify.com')" :class="url.includes('spotify.com') ? 'opacity-50 cursor-not-allowed bg-[#3f3f46]' : 'bg-[#005c99] hover:bg-[#005c99] text-white'" class="px-2 rounded-r-lg border-l border-black/20 transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                </button>
+                <div x-show="open" x-transition class="absolute top-full right-0 mt-1 bg-[#24242b] border border-[#3f3f46] rounded-lg shadow-lg overflow-hidden z-10 w-24" style="display: none;">
+                    <button type="button" @click="videoFormat = 'mp4'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white">mp4</button>
+                    <button type="button" @click="videoFormat = 'mkv'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white">mkv</button>
+                </div>
+            </div>
+        </div>
     </form>
 </div>
 

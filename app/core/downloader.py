@@ -43,7 +43,7 @@ def fix_permissions(path: Path):
     except Exception as e:
         logger.error(f"Failed to fix permissions: {e}")
 
-def handle_spotify(url: str, db: Session, job_id: str) -> str:
+def handle_spotify(url: str, db: Session, job_id: str, file_format: str = "mp3") -> str:
     """Handles Spotify downloads with spotdl, applying delta-sync."""
     temp_file = f"temp_{job_id}.spotdl"
     
@@ -85,7 +85,8 @@ def handle_spotify(url: str, db: Session, job_id: str) -> str:
         # Download using built-in template
         cmd_dl = ["spotdl"] + auth_args + [
             "--yt-dlp-args", "extractor-args=youtube:player_client=android", temp_file,
-            "--output", "/downloads/{list-name}/{artist} - {title}.{ext}"
+            "--output", f"/downloads/{{list-name}}/{{artist}} - {{title}}.{file_format}",
+            "--format", file_format
         ]
         try:
             subprocess.run(cmd_dl, check=True, capture_output=True, text=True, timeout=3600)
@@ -99,7 +100,7 @@ def handle_spotify(url: str, db: Session, job_id: str) -> str:
             title = track.get("name", "Unknown Title")
             artist = track.get("artist", "Unknown Artist")
             list_name = track.get("list_name", "")
-            file_path = f"/downloads/{list_name}/{artist} - {title}.mp3" if list_name else f"/downloads/{artist} - {title}.mp3"
+            file_path = f"/downloads/{list_name}/{artist} - {title}.{file_format}" if list_name else f"/downloads/{artist} - {title}.{file_format}"
             insert_download(db, track_id, title, artist, file_path, "Completed", job_id)
 
         # Fix permissions on /downloads
@@ -115,7 +116,7 @@ def handle_spotify(url: str, db: Session, job_id: str) -> str:
             os.remove(temp_file)
 
 
-def handle_youtube(url: str, db: Session, job_id: str) -> str:
+def handle_youtube(url: str, db: Session, job_id: str, media_type: str = "audio", file_format: str = "mp3") -> str:
     """Handles YouTube downloads with yt-dlp, applying delta-sync."""
     batch_file = f"batch_{job_id}.txt"
 
@@ -150,22 +151,34 @@ def handle_youtube(url: str, db: Session, job_id: str) -> str:
                 f.write(f"https://www.youtube.com/watch?v={track['id']}\n")
 
         # Download remaining tracks using built-in template
-        subprocess.run([
-            "yt-dlp",
-            "--extractor-args", "youtube:player_client=android",
-            "-x",
-            "--audio-format", "mp3",
-            "--audio-quality", "0",
-            "-a", batch_file,
-            "-o", "/downloads/%(playlist_title|)s/%(title)s.%(ext)s"
-        ], check=True)
+        if media_type == "audio":
+            cmd_dl = [
+                "yt-dlp",
+                "--extractor-args", "youtube:player_client=android",
+                "-x",
+                "--audio-format", file_format,
+                "--audio-quality", "0",
+                "-a", batch_file,
+                "-o", "/downloads/%(playlist_title|)s/%(title)s.%(ext)s"
+            ]
+        else:
+            cmd_dl = [
+                "yt-dlp",
+                "--extractor-args", "youtube:player_client=android",
+                "-f", "bestvideo+bestaudio/best",
+                "--merge-output-format", file_format,
+                "-a", batch_file,
+                "-o", "/downloads/%(playlist_title|)s/%(title)s.%(ext)s"
+            ]
+            
+        subprocess.run(cmd_dl, check=True)
 
         # Mark as completed
         for track in to_download:
             track_id = track.get("id")
             title = track.get("title", "Unknown Title")
             artist = track.get("uploader", "Unknown Artist")
-            insert_download(db, track_id, title, artist, f"/downloads/{title}.mp3", "Completed", job_id)
+            insert_download(db, track_id, title, artist, f"/downloads/{title}.{file_format}", "Completed", job_id)
 
         # Fix permissions on /downloads
         fix_permissions(DOWNLOAD_DIR)

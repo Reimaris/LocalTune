@@ -9,7 +9,7 @@ from app.core.logging_config import setup_logging
 
 logger = setup_logging()
 
-def process_download(url: str):
+def process_download(url: str, media_type: str = "audio", file_format: str = "mp3"):
     """
     Background task to process downloads, apply delta-sync, and notify.
     """
@@ -21,10 +21,10 @@ def process_download(url: str):
     try:
         if re.search(r'(spotify\.com)', url):
             logger.info("Routing to Spotify handler...")
-            title = handle_spotify(url, db, job_id)
+            title = handle_spotify(url, db, job_id, file_format)
         elif re.search(r'(youtube\.com|youtu\.be)', url):
             logger.info("Routing to YouTube handler...")
-            title = handle_youtube(url, db, job_id)
+            title = handle_youtube(url, db, job_id, media_type, file_format)
         else:
             logger.error("Unsupported URL type in worker.")
             return
