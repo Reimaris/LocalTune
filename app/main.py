@@ -33,6 +33,12 @@ app = FastAPI(title="LocalTune")
 # Setup static files and templates
 BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+
+# Mount downloads directory so it's accessible via /downloads
+downloads_dir = "/downloads"
+os.makedirs(downloads_dir, exist_ok=True)
+app.mount("/downloads", StaticFiles(directory=downloads_dir), name="downloads")
+
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 # Setup Redis and RQ
