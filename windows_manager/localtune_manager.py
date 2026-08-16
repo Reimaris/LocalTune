@@ -214,8 +214,8 @@ class ManagerApp:
                     self.q.put(("cmd", line))
                 p1.wait()
                 
-                self.log("\n> docker compose build --progress=plain")
-                p2 = subprocess.Popen(["docker", "compose", "build", "--progress=plain"], cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", env=env, creationflags=creationflags)
+                self.log("\n> docker compose pull")
+                p2 = subprocess.Popen(["docker", "compose", "pull"], cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", env=env, creationflags=creationflags)
                 for line in p2.stdout:
                     self.q.put(("cmd", line))
                 p2.wait()

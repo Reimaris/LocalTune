@@ -33,7 +33,7 @@ Now that your PC is ready, you can get the LocalTune Manager. This is a small pr
 3. In the LocalTune Manager, click **Install LocalTune**.
 4. The manager will automatically download the codebase into a `LocalTune` folder right next to the `.exe`. You'll see the progress in the built-in console.
 5. Once installation says "Completed successfully", the buttons will update.
-6. Click **Start LocalTune**. The first time you do this, Docker will take a few minutes to build the container.
+6. Click **Start LocalTune**. The first time you do this, Docker will take a few minutes to download the container image.
 7. Once finished, click **Open Dashboard** to start downloading music!
 
 ## Troubleshooting

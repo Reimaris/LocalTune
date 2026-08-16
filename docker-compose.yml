@@ -1,7 +1,7 @@
 
 services:
   web:
-    build: .
+    image: ghcr.io/reimaris/localtune:latest
     container_name: localtune_web
     ports:
       - "8001:8000"
@@ -17,7 +17,7 @@ services:
     restart: unless-stopped
 
   worker:
-    build: .
+    image: ghcr.io/reimaris/localtune:latest
     container_name: localtune_worker
     command: ["rq", "worker", "-u", "redis://redis:6379/0", "downloads"]
     volumes:
@@ -39,7 +39,7 @@ services:
     restart: unless-stopped
 
   log_collector:
-    build: .
+    image: ghcr.io/reimaris/localtune:latest
     container_name: localtune_log_collector
     command: ["python", "-u", "/app/app/log_collector.py"]
     volumes:

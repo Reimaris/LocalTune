@@ -28,7 +28,7 @@ LocalTune is a self-hosted, lightweight web application for managing and downloa
 2. **Start the application:**
    Using Docker Compose, build and spin up the web interface, the background worker, and the Redis queue:
    ```bash
-   docker compose up --build -d
+   docker compose up -d
    ```
    *(For development/testing, use `docker-compose.test.yml`)*
 
