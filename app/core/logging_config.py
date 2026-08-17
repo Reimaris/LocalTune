@@ -7,10 +7,12 @@ from pathlib import Path
 # Create a global queue for log events
 log_queue = asyncio.Queue()
 
+
 class AsyncQueueHandler(logging.Handler):
     """
     A custom logging handler that puts log messages into an asyncio queue.
     """
+
     def emit(self, record):
         try:
             msg = self.format(record)
@@ -23,6 +25,7 @@ class AsyncQueueHandler(logging.Handler):
         except Exception:
             self.handleError(record)
 
+
 async def log_generator():
     """
     Generator that yields logs formatted as Server-Sent Events (SSE).
@@ -30,8 +33,9 @@ async def log_generator():
     while True:
         log_message = await log_queue.get()
         # Prevent newlines from breaking SSE format
-        safe_msg = log_message.replace('\n', ' ')
+        safe_msg = log_message.replace("\n", " ")
         yield f"data: {safe_msg}\n\n"
+
 
 def setup_logging(log_level: str = "INFO"):
     """
@@ -46,8 +50,8 @@ def setup_logging(log_level: str = "INFO"):
 
     # Define the common formatter
     formatter = logging.Formatter(
-        "%(asctime)s - [%(levelname)s] - %(name)s - %(message)s", 
-        datefmt="%Y-%m-%d %H:%M:%S"
+        "%(asctime)s - [%(levelname)s] - %(name)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     # Console Handler for real-time stdout tracking
@@ -60,7 +64,7 @@ def setup_logging(log_level: str = "INFO"):
         when="midnight",
         interval=1,
         backupCount=5,
-        encoding="utf-8"
+        encoding="utf-8",
     )
     file_handler.suffix = "%Y-%m-%d"
     file_handler.setFormatter(formatter)
@@ -72,15 +76,15 @@ def setup_logging(log_level: str = "INFO"):
     # Configure the root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
-    
+
     # Clear any existing handlers to prevent duplicate logs
     if root_logger.hasHandlers():
         root_logger.handlers.clear()
-        
+
     root_logger.addHandler(console_handler)
     root_logger.addHandler(file_handler)
     root_logger.addHandler(queue_handler)
-    
+
     # Silence noisy third-party loggers
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)

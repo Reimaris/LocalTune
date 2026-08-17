@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, DateTime
 from datetime import datetime, timezone
 from app.db.database import Base
 
+
 class Download(Base):
     __tablename__ = "downloads"
 
@@ -14,6 +15,7 @@ class Download(Base):
     job_id = Column(String, index=True, nullable=True)
     job_title = Column(String, nullable=True)
     downloaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
 
 class Settings(Base):
     __tablename__ = "settings"

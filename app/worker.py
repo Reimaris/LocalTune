@@ -7,18 +7,21 @@ from app.core.notifications import send_telegram_notification
 
 logger = logging.getLogger(__name__)
 
-def process_download(job_id: str, url: str, media_type: str = "audio", file_format: str = "opus"):
+
+def process_download(
+    job_id: str, url: str, media_type: str = "audio", file_format: str = "opus"
+):
     """
     Background task to process downloads, apply delta-sync, and notify.
     """
     logger.info(f"Worker started processing: {url}")
     db = SessionLocal()
-    
+
     try:
-        if re.search(r'(spotify\.com)', url):
+        if re.search(r"(spotify\.com)", url):
             logger.info("Routing to Spotify handler...")
             title = handle_spotify(url, db, job_id, file_format)
-        elif re.search(r'(youtube\.com|youtu\.be)', url):
+        elif re.search(r"(youtube\.com|youtu\.be)", url):
             logger.info("Routing to YouTube handler...")
             title = handle_youtube(url, db, job_id, media_type, file_format)
         else:
@@ -26,19 +29,25 @@ def process_download(job_id: str, url: str, media_type: str = "audio", file_form
             return
 
         # Remove the placeholder row now that real tracks are registered
-        placeholder = db.query(models.Download).filter(models.Download.track_id == job_id).first()
+        placeholder = (
+            db.query(models.Download).filter(models.Download.track_id == job_id).first()
+        )
         if placeholder:
             db.delete(placeholder)
             db.commit()
 
         logger.info(f"Download handled successfully: {title}")
-        metadata_str = f"URL: {url}\nFormat: {file_format.upper()} ({media_type.capitalize()})"
+        metadata_str = (
+            f"URL: {url}\nFormat: {file_format.upper()} ({media_type.capitalize()})"
+        )
         send_telegram_notification(f"{title}\n\n{metadata_str}")
-        
+
     except Exception as e:
         logger.error(f"Worker failed processing {url}: {e}", exc_info=True)
         # Mark all tracks in this job as failed
-        failed_tracks = db.query(models.Download).filter(models.Download.job_id == job_id).all()
+        failed_tracks = (
+            db.query(models.Download).filter(models.Download.job_id == job_id).all()
+        )
         for track in failed_tracks:
             track.status = "Failed"
         db.commit()
