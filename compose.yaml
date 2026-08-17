@@ -1,0 +1,14 @@
+services:
+  localtune:
+    build: .
+    image: ghcr.io/reimaris/localtune:latest
+    container_name: localtune
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./app:/app/app
+      - ./config:/app/config
+      - ./downloads:/downloads
+    environment:
+      - DATABASE_URL=sqlite:////app/config/localtune.db
+    restart: unless-stopped

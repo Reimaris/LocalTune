@@ -5,7 +5,7 @@ import subprocess
 import webbrowser
 import threading
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
 import queue
 
 def get_base_dir():
@@ -236,7 +236,7 @@ class ManagerApp:
 
 def main():
     root = tk.Tk()
-    app = ManagerApp(root)
+    _app = ManagerApp(root)
     root.mainloop()
 
 if __name__ == "__main__":

@@ -1,22 +1,18 @@
 import re
-import uuid
-from rq import get_current_job
+import logging
 from app.db.database import SessionLocal
 from app.db import models
 from app.core.downloader import handle_spotify, handle_youtube
 from app.core.notifications import send_telegram_notification
-from app.core.logging_config import setup_logging
 
-logger = setup_logging()
+logger = logging.getLogger(__name__)
 
-def process_download(url: str, media_type: str = "audio", file_format: str = "opus"):
+def process_download(job_id: str, url: str, media_type: str = "audio", file_format: str = "opus"):
     """
     Background task to process downloads, apply delta-sync, and notify.
     """
     logger.info(f"Worker started processing: {url}")
     db = SessionLocal()
-    job = get_current_job()
-    job_id = job.id if job else uuid.uuid4().hex
     
     try:
         if re.search(r'(spotify\.com)', url):

@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Install system dependencies required for building some python packages and for audio processing
 RUN apt-get update && apt-get install -y \
@@ -7,6 +7,9 @@ RUN apt-get update && apt-get install -y \
     gcc \
     nodejs \
     && rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user
+RUN useradd -m -U appuser
 
 WORKDIR /app
 
@@ -23,9 +26,11 @@ COPY . .
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-# Create necessary directories
-RUN mkdir -p /app/config/logs /downloads
+# Create necessary directories and ensure permissions for the non-root user
+RUN mkdir -p /app/config/logs /downloads \
+    && chown -R appuser:appuser /app /downloads
 
-# By default, we will run the web server. 
-# The worker container will override the command in docker-compose.
+USER appuser
+
+# Run the web server
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,16 +1,15 @@
 import re
 import os
-from fastapi import FastAPI, Request, Depends, Form
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request, Depends, Form, BackgroundTasks
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from pathlib import Path
-from redis import Redis
-from rq import Queue
-from app.core.logging_config import setup_logging
-from app.core.config import settings
+import uuid
+from app.core.logging_config import setup_logging, log_generator
+from app.worker import process_download
 from app.db import models
 from app.db.database import engine, get_db
 
@@ -41,9 +40,7 @@ app.mount("/downloads", StaticFiles(directory=downloads_dir), name="downloads")
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-# Setup Redis and RQ
-redis_conn = Redis.from_url(settings.redis_url)
-task_queue = Queue("downloads", connection=redis_conn)
+# No longer using Redis/RQ
 
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):
@@ -86,6 +83,7 @@ async def dashboard(request: Request):
 @app.post("/download", response_class=HTMLResponse)
 async def download_url(
     request: Request,
+    background_tasks: BackgroundTasks,
     url: str = Form(...),
     media_type: str = Form("audio"),
     file_format: str = Form("opus"),
@@ -117,15 +115,16 @@ async def download_url(
         </div>
         """
         
-    job = task_queue.enqueue("app.worker.process_download", url=url, media_type=media_type, file_format=file_format, job_timeout=14400)
+    job_id = uuid.uuid4().hex
+    background_tasks.add_task(process_download, job_id, url, media_type, file_format)
     
     try:
         new_download = models.Download(
-            track_id=job.id,
+            track_id=job_id,
             title=url,
             artist="Pending Metadata...",
             status="Queued",
-            job_id=job.id
+            job_id=job_id
         )
         db.add(new_download)
         db.commit()
@@ -136,7 +135,7 @@ async def download_url(
     return f"""
     <div class="bg-emerald-900 border border-emerald-700 text-white px-4 py-3 rounded relative mb-4" role="alert">
       <strong class="font-bold">Success!</strong>
-      <span class="block sm:inline">Job queued for {url} (ID: {job.id})</span>
+      <span class="block sm:inline">Job queued for {url} (ID: {job_id})</span>
     </div>
     """
 
@@ -239,4 +238,8 @@ async def delete_track(request: Request, track_id: int, db: Session = Depends(ge
         db.delete(track)
         db.commit()
     return ""
+
+@app.get("/api/logs")
+async def stream_logs():
+    return StreamingResponse(log_generator(), media_type="text/event-stream")
 
