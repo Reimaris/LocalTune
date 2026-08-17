@@ -26,15 +26,14 @@ LocalTune is a self-hosted, lightweight web application for managing and downloa
    ```
 
 2. **Start the application:**
-   Using Docker Compose, build and spin up the web interface, the background worker, and the Redis queue:
+   Using Docker Compose, start the single-container LocalTune application:
    ```bash
    docker compose up -d
    ```
-   *(For development/testing, use `docker-compose.test.yml`)*
 
 3. **Access the Web App:**
    Open your browser and navigate to:
-   `http://localhost:8001`
+   `http://localhost:8000`
 
 4. **Configure Settings:**
    Head to the **Settings** tab in the navigation bar to configure your Telegram Notification tokens and Spotify API credentials.
@@ -46,18 +45,19 @@ LocalTune will queue the job in the background, extract the metadata, cross-refe
 
 ## Windows Manager GUI
 
-For Windows users, LocalTune comes with a lightweight executable GUI manager. It allows you to easily start/stop the Docker containers, open the dashboard, quickly access your downloads folder, and update the application without needing to touch the command line.
+For Windows users, LocalTune comes with a standalone, dark-themed executable GUI manager (`LocalTune_Manager.exe`). It allows non-technical users to install, start/stop the Docker container, update the app, open the logs, and quickly access downloads without touching the command line.
 
 **Download & Install:**
-👉 **[Read the Complete Windows Installation Guide](WINDOWS_INSTALLATION.md)** for step-by-step instructions (perfect if you don't have Docker or Git installed yet).
+👉 **[Read the Complete Windows Installation Guide](WINDOWS_INSTALLATION.md)** for step-by-step instructions.
 
 *(For developers wanting to build the manager from source: Navigate to the `windows_manager` directory and run `build.bat`)*
 
 ## Architecture
 
 - **Frontend:** HTML, Vanilla TailwindCSS, HTMX, AlpineJS.
-- **Backend:** Python 3.11, FastAPI, SQLAlchemy (SQLite), Redis Queue (RQ).
+- **Backend:** Python 3.12, FastAPI, SQLAlchemy (SQLite), FastAPI BackgroundTasks (Single-Container Architecture).
 - **Core Extractors:** `spotdl`, `yt-dlp`.
+- **Windows Helper:** Python 3.12, CustomTkinter (PyInstaller standalone executable).
 
 ## License
 
