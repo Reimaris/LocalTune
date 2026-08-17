@@ -21,21 +21,20 @@ Docker is what allows LocalTune to run securely in an isolated container without
 6. Accept the terms and skip any tutorials. Wait until the status bar in the bottom left says **Engine running**. Docker MUST be running for LocalTune to work.
 
 ## Step 3: Download LocalTune Manager
-Now that your PC is ready, you can get the LocalTune Manager. This is a small program that will handle everything else for you.
+Now that your PC is ready, you can get the LocalTune Manager. This is a standalone dark-themed helper application that handles everything else for you.
 
 1. Go to the [LocalTune Releases](https://github.com/Reimaris/LocalTune/releases) page on GitHub.
-2. Download the latest `LocalTuneManager.exe` file.
-3. Move `LocalTuneManager.exe` into a new folder where you want your downloads to be saved (e.g., `Documents/LocalTune_App`).
+2. Download the latest `LocalTune_Manager.exe` single-file executable.
+3. Place `LocalTune_Manager.exe` into a folder where you want your application and downloads to be kept (e.g., `Documents/LocalTune`).
 
 ## Step 4: Run the Manager
-1. Double-click `LocalTuneManager.exe`.
-2. Windows Defender might show a "Windows protected your PC" blue screen because it's a new executable. Click **More info** -> **Run anyway**.
-3. In the LocalTune Manager, click **Install LocalTune**.
-4. The manager will automatically download the codebase into a `LocalTune` folder right next to the `.exe`. You'll see the progress in the built-in console.
-5. Once installation says "Completed successfully", the buttons will update.
-6. Click **Start LocalTune**. The first time you do this, Docker will take a few minutes to download the container image.
-7. Once finished, click **Open Dashboard** to start downloading music!
+1. Double-click `LocalTune_Manager.exe`.
+2. Windows Defender might show a "Windows protected your PC" notification because it is a standalone executable. Click **More info** -> **Run anyway**.
+3. In the dark-themed LocalTune Manager, click **Install LocalTune** (if the repository is not present yet).
+4. The manager will automatically download the codebase into a `LocalTune` subfolder right next to the `.exe`. You'll see progress in the built-in console.
+5. Once installation finishes, click **▶️ Start LocalTune**. The button will switch to **⏹️ Stop LocalTune** while the container is active.
+6. Click **🌐 Open Dashboard** to open `http://localhost:8000` in your web browser and start using LocalTune!
 
 ## Troubleshooting
-- **Manager says "Docker is missing"**: Ensure Docker Desktop is actually open and running in your system tray (bottom right of your screen). Ensure you didn't uncheck adding it to your PATH during installation.
-- **Console says "failed to solve"**: Sometimes Docker gets stuck. Restart Docker Desktop and click **Start LocalTune** again.
+- **Manager says "Docker is missing"**: Ensure Docker Desktop is actually open and running in your system tray (bottom right of your screen).
+- **Console error during update or start**: Restart Docker Desktop and click **▶️ Start LocalTune** again.

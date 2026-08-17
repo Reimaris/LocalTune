@@ -4,187 +4,276 @@ import shutil
 import subprocess
 import webbrowser
 import threading
-import tkinter as tk
-from tkinter import ttk
 import queue
+import customtkinter as ctk
+
+# Configure CustomTkinter aesthetic
+ctk.set_appearance_mode("Dark")
+ctk.set_default_color_theme("blue")
 
 
-def get_base_dir():
+def get_base_dir() -> str:
+    """Return directory containing the executable or script."""
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def get_project_dir():
+def get_project_dir() -> str | None:
+    """Locate the LocalTune project root containing compose.yaml or docker-compose.yml."""
     base = get_base_dir()
-    if os.path.exists(os.path.join(base, "docker-compose.yml")):
-        return base
-    if os.path.exists(os.path.join(base, "LocalTune", "docker-compose.yml")):
-        return os.path.join(base, "LocalTune")
+    for filename in ("compose.yaml", "docker-compose.yml"):
+        if os.path.exists(os.path.join(base, filename)):
+            return base
+        subfolder = os.path.join(base, "LocalTune")
+        if os.path.exists(os.path.join(subfolder, filename)):
+            return subfolder
     return None
 
 
-class ManagerApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("LocalTune Manager")
-        self.root.geometry("600x550")
-        self.root.resizable(True, True)
-        self.q = queue.Queue()
+class ManagerApp(ctk.CTk):
+    def __init__(self):
+        super().__init__()
 
-        style = ttk.Style()
-        if "vista" in style.theme_names():
-            style.theme_use("vista")
-        elif "clam" in style.theme_names():
-            style.theme_use("clam")
+        self.title("LocalTune Manager")
+        self.geometry("640x580")
+        self.minsize(580, 480)
 
-        self.main_frame = ttk.Frame(root, padding="15")
-        self.main_frame.pack(fill=tk.BOTH, expand=True)
+        self.q: queue.Queue = queue.Queue()
+        self.is_running_container: bool = False
+        self.is_processing_cmd: bool = False
 
-        title_label = ttk.Label(
-            self.main_frame, text="LocalTune Manager", font=("Segoe UI", 16, "bold")
+        # Main Layout Container
+        self.main_frame = ctk.CTkFrame(self, corner_radius=12)
+        self.main_frame.pack(fill="both", expand=True, padx=15, pady=15)
+
+        # Title Label
+        self.title_label = ctk.CTkLabel(
+            self.main_frame,
+            text="🎵 LocalTune Manager",
+            font=ctk.CTkFont(size=20, weight="bold"),
         )
-        title_label.pack(pady=(0, 10))
+        self.title_label.pack(pady=(15, 10))
 
-        self.button_frame = ttk.Frame(self.main_frame)
-        self.button_frame.pack(fill=tk.X, pady=5)
+        # Control Buttons Frame
+        self.button_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        self.button_frame.pack(fill="x", padx=15, pady=5)
 
-        self.console_frame = ttk.Frame(self.main_frame)
-        self.console_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+        # Console Log Frame
+        self.console_frame = ctk.CTkFrame(self.main_frame)
+        self.console_frame.pack(fill="both", expand=True, padx=15, pady=10)
 
-        self.console = tk.Text(
+        self.console_label = ctk.CTkLabel(
             self.console_frame,
-            height=15,
-            wrap="word",
-            font=("Consolas", 9),
-            bg="#1e1e1e",
-            fg="#cccccc",
+            text="Console Log Output",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            anchor="w",
         )
-        self.scrollbar = ttk.Scrollbar(self.console_frame, command=self.console.yview)
-        self.console.configure(yscrollcommand=self.scrollbar.set)
+        self.console_label.pack(anchor="w", padx=10, pady=(8, 2))
 
-        self.console.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.console.config(state=tk.DISABLED)
+        self.console = ctk.CTkTextbox(
+            self.console_frame,
+            font=ctk.CTkFont(family="Consolas", size=11),
+            wrap="word",
+            activate_scrollbars=True,
+        )
+        self.console.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        self.console.configure(state="disabled")
 
-        self.status_var = tk.StringVar(value="Ready")
-        self.status_label = ttk.Label(
+        # Status Bar
+        self.status_var = ctk.StringVar(value="Ready")
+        self.status_label = ctk.CTkLabel(
             self.main_frame,
             textvariable=self.status_var,
-            font=("Segoe UI", 9, "italic"),
-            foreground="gray",
+            font=ctk.CTkFont(size=11, slant="italic"),
+            text_color="gray",
+            anchor="w",
         )
-        self.status_label.pack(side=tk.BOTTOM, anchor="w")
+        self.status_label.pack(fill="x", padx=15, pady=(0, 10))
 
-        self.root.after(100, self.process_queue)
+        # Queue Poller
+        self.after(100, self.process_queue)
 
+        # Initial Render
         self.check_dependencies_and_render()
 
     def process_queue(self):
         try:
             while True:
                 tag, msg = self.q.get_nowait()
-                self.console.config(state=tk.NORMAL)
-                self.console.insert(tk.END, msg)
-                self.console.see(tk.END)
-                self.console.config(state=tk.DISABLED)
+                self.console.configure(state="normal")
+                self.console.insert("end", msg)
+                self.console.see("end")
+                self.console.configure(state="disabled")
         except queue.Empty:
             pass
-        self.root.after(100, self.process_queue)
+        self.after(100, self.process_queue)
 
-    def log(self, message):
+    def log(self, message: str):
         self.q.put(("info", message + "\n"))
 
     def check_dependencies_and_render(self):
         has_git = shutil.which("git") is not None
         has_docker = shutil.which("docker") is not None
 
-        # Clear button frame
+        # Clear existing button widgets
         for widget in self.button_frame.winfo_children():
             widget.destroy()
 
         if not has_git or not has_docker:
-            self.log("Missing dependencies detected!")
+            self.log("⚠️ Missing dependencies detected!")
             if not has_git:
-                self.log("-> Git is missing.")
+                self.log(" -> Git is not installed or not in PATH.")
             if not has_docker:
-                self.log("-> Docker is missing.")
+                self.log(" -> Docker is not installed or not in PATH.")
 
-            warn_lbl = ttk.Label(
+            warn_lbl = ctk.CTkLabel(
                 self.button_frame,
-                text="Missing required dependencies for LocalTune.",
-                font=("Segoe UI", 10, "bold"),
-                foreground="red",
+                text="Missing required system dependencies for LocalTune.",
+                font=ctk.CTkFont(size=13, weight="bold"),
+                text_color="#ff5555",
             )
             warn_lbl.grid(row=0, column=0, columnspan=2, pady=5)
 
             if not has_git:
-                ttk.Button(
+                ctk.CTkButton(
                     self.button_frame,
                     text="Download Git",
+                    fg_color="#3b82f6",
+                    hover_color="#2563eb",
                     command=lambda: webbrowser.open("https://git-scm.com/downloads"),
                 ).grid(row=1, column=0, padx=5, pady=5)
             if not has_docker:
-                ttk.Button(
+                ctk.CTkButton(
                     self.button_frame,
                     text="Download Docker",
+                    fg_color="#3b82f6",
+                    hover_color="#2563eb",
                     command=lambda: webbrowser.open(
                         "https://www.docker.com/products/docker-desktop/"
                     ),
                 ).grid(row=1, column=1, padx=5, pady=5)
 
-            ttk.Button(
+            ctk.CTkButton(
                 self.button_frame,
-                text="Refresh",
+                text="Refresh Dependencies",
+                fg_color="#4b5563",
+                hover_color="#374151",
                 command=self.check_dependencies_and_render,
             ).grid(row=2, column=0, columnspan=2, pady=10)
             return
 
         project_dir = get_project_dir()
         if not project_dir:
-            self.log("LocalTune is not installed in the current directory.")
-            ttk.Button(
+            self.log("LocalTune repository is not installed in current folder.")
+            ctk.CTkButton(
                 self.button_frame,
                 text="Install LocalTune",
+                font=ctk.CTkFont(size=14, weight="bold"),
+                fg_color="#10b981",
+                hover_color="#059669",
                 command=self.install_localtune,
-            ).grid(row=0, column=0, padx=5, pady=5)
+            ).pack(pady=10)
         else:
-            ttk.Button(
-                self.button_frame, text="Open Dashboard", command=self.open_dashboard
-            ).grid(row=0, column=0, padx=5, pady=5)
-            ttk.Button(
-                self.button_frame, text="Start LocalTune", command=self.start_docker
-            ).grid(row=0, column=1, padx=5, pady=5)
-            ttk.Button(
-                self.button_frame, text="Stop LocalTune", command=self.stop_docker
-            ).grid(row=0, column=2, padx=5, pady=5)
-            ttk.Button(
-                self.button_frame, text="Update", command=self.update_localtune
-            ).grid(row=1, column=0, padx=5, pady=5)
-            ttk.Button(
-                self.button_frame,
-                text="Open Downloads",
-                command=lambda: self.open_folder("downloads"),
-            ).grid(row=1, column=1, padx=5, pady=5)
-            ttk.Button(
-                self.button_frame,
-                text="Open Logs",
-                command=lambda: self.open_folder("config/logs"),
-            ).grid(row=1, column=2, padx=5, pady=5)
+            self.button_frame.grid_columnconfigure((0, 1, 2), weight=1)
 
-    def run_command(self, cmd_list, cwd=None, success_msg="Completed successfully."):
+            # Dynamic Toggle Button for Docker Container State
+            if self.is_running_container:
+                self.toggle_btn = ctk.CTkButton(
+                    self.button_frame,
+                    text="⏹️ Stop LocalTune",
+                    font=ctk.CTkFont(weight="bold"),
+                    fg_color="#ef4444",
+                    hover_color="#dc2626",
+                    command=self.toggle_docker,
+                )
+            else:
+                self.toggle_btn = ctk.CTkButton(
+                    self.button_frame,
+                    text="▶️ Start LocalTune",
+                    font=ctk.CTkFont(weight="bold"),
+                    fg_color="#10b981",
+                    hover_color="#059669",
+                    command=self.toggle_docker,
+                )
+            self.toggle_btn.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+
+            # Open Dashboard Button
+            ctk.CTkButton(
+                self.button_frame,
+                text="🌐 Open Dashboard",
+                command=self.open_dashboard,
+            ).grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+
+            # Update Button
+            ctk.CTkButton(
+                self.button_frame,
+                text="🔄 Update LocalTune",
+                fg_color="#8b5cf6",
+                hover_color="#7c3aed",
+                command=self.update_localtune,
+            ).grid(row=0, column=2, padx=5, pady=5, sticky="ew")
+
+            # Open Downloads Button
+            ctk.CTkButton(
+                self.button_frame,
+                text="📁 Open Downloads",
+                fg_color="#4b5563",
+                hover_color="#374151",
+                command=lambda: self.open_folder("downloads"),
+            ).grid(row=1, column=0, padx=5, pady=5, sticky="ew")
+
+            # Open Logs Button
+            ctk.CTkButton(
+                self.button_frame,
+                text="📄 Open Logs",
+                fg_color="#4b5563",
+                hover_color="#374151",
+                command=lambda: self.open_folder("config/logs"),
+            ).grid(row=1, column=1, padx=5, pady=5, sticky="ew")
+
+            # Async container status update in background
+            if not self.is_processing_cmd:
+                threading.Thread(target=self.detect_container_status, daemon=True).start()
+
+    def detect_container_status(self):
+        """Asynchronously check if LocalTune Docker container is currently active."""
+        project_dir = get_project_dir()
+        if not project_dir:
+            return
+
+        try:
+            creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            result = subprocess.run(
+                ["docker", "compose", "ps", "--services", "--filter", "status=running"],
+                cwd=project_dir,
+                capture_output=True,
+                text=True,
+                creationflags=creationflags,
+            )
+            is_running = bool(result.stdout and result.stdout.strip())
+            if is_running != self.is_running_container:
+                self.is_running_container = is_running
+                self.after(0, self.check_dependencies_and_render)
+        except Exception:
+            pass
+
+    def run_command(
+        self,
+        cmd_list: list[str],
+        cwd: str | None = None,
+        success_msg: str = "Completed successfully.",
+        on_complete_callback=None,
+    ):
         if cwd is None:
             cwd = get_project_dir() or get_base_dir()
 
         def target():
+            self.is_processing_cmd = True
             self.status_var.set("Running command...")
             self.log(f"\n> {' '.join(cmd_list)}")
             try:
-                # Use CREATE_NO_WINDOW on Windows to prevent console popup
-                creationflags = 0
-                if os.name == "nt":
-                    creationflags = subprocess.CREATE_NO_WINDOW
-
+                creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
                 process = subprocess.Popen(
                     cmd_list,
                     cwd=cwd,
@@ -196,20 +285,23 @@ class ManagerApp:
                     creationflags=creationflags,
                 )
 
-                for line in process.stdout:
-                    self.q.put(("cmd", line))
+                if process.stdout:
+                    for line in process.stdout:
+                        self.q.put(("cmd", line))
 
                 process.wait()
                 if process.returncode == 0:
                     self.log(success_msg)
                 else:
-                    self.log(f"Process failed with exit code {process.returncode}")
+                    self.log(f"Process exited with code {process.returncode}")
             except Exception as e:
-                self.log(f"Error: {e}")
+                self.log(f"Error executing command: {e}")
             finally:
+                self.is_processing_cmd = False
                 self.status_var.set("Ready")
-                # Ensure the UI reflects new state if we just installed
-                self.root.after(0, self.check_dependencies_and_render)
+                if on_complete_callback:
+                    on_complete_callback()
+                self.after(0, self.check_dependencies_and_render)
 
         threading.Thread(target=target, daemon=True).start()
 
@@ -221,11 +313,27 @@ class ManagerApp:
             success_msg="Installation complete! You can now start LocalTune.",
         )
 
-    def open_dashboard(self):
-        self.log("Opening dashboard in browser...")
-        webbrowser.open("http://localhost:8001")
+    def toggle_docker(self):
+        if self.is_running_container:
+            self.log("Stopping LocalTune container...")
+            self.run_command(
+                ["docker", "compose", "down"],
+                success_msg="LocalTune container stopped.",
+                on_complete_callback=lambda: setattr(self, "is_running_container", False),
+            )
+        else:
+            self.log("Starting LocalTune container...")
+            self.run_command(
+                ["docker", "compose", "up", "-d"],
+                success_msg="LocalTune container started successfully!",
+                on_complete_callback=lambda: setattr(self, "is_running_container", True),
+            )
 
-    def open_folder(self, folder_path):
+    def open_dashboard(self):
+        self.log("Opening http://localhost:8000 in browser...")
+        webbrowser.open("http://localhost:8000")
+
+    def open_folder(self, folder_path: str):
         project_dir = get_project_dir()
         if not project_dir:
             return
@@ -237,7 +345,7 @@ class ManagerApp:
             try:
                 os.makedirs(target_path, exist_ok=True)
             except Exception as e:
-                self.log(f"Error creating folder: {e}")
+                self.log(f"Error creating directory: {e}")
                 return
 
         try:
@@ -250,16 +358,9 @@ class ManagerApp:
         except Exception as e:
             self.log(f"Failed to open folder: {e}")
 
-    def start_docker(self):
-        self.run_command(["docker", "compose", "up", "-d"])
-
-    def stop_docker(self):
-        self.run_command(["docker", "compose", "down"])
-
     def update_localtune(self):
-        # Using a batch file or chained commands is tricky with list format.
-        # We'll run git pull first, then docker compose.
         def target():
+            self.is_processing_cmd = True
             self.status_var.set("Updating...")
             cwd = get_project_dir()
             creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
@@ -279,8 +380,9 @@ class ManagerApp:
                     errors="replace",
                     creationflags=creationflags,
                 )
-                for line in p1.stdout:
-                    self.q.put(("cmd", line))
+                if p1.stdout:
+                    for line in p1.stdout:
+                        self.q.put(("cmd", line))
                 p1.wait()
 
                 self.log("\n> docker compose pull")
@@ -295,8 +397,9 @@ class ManagerApp:
                     env=env,
                     creationflags=creationflags,
                 )
-                for line in p2.stdout:
-                    self.q.put(("cmd", line))
+                if p2.stdout:
+                    for line in p2.stdout:
+                        self.q.put(("cmd", line))
                 p2.wait()
 
                 self.log("\n> docker compose up -d")
@@ -311,23 +414,26 @@ class ManagerApp:
                     env=env,
                     creationflags=creationflags,
                 )
-                for line in p3.stdout:
-                    self.q.put(("cmd", line))
+                if p3.stdout:
+                    for line in p3.stdout:
+                        self.q.put(("cmd", line))
                 p3.wait()
 
-                self.log("Update completed!")
+                self.is_running_container = True
+                self.log("LocalTune update completed successfully!")
             except Exception as e:
                 self.log(f"Error during update: {e}")
             finally:
+                self.is_processing_cmd = False
                 self.status_var.set("Ready")
+                self.after(0, self.check_dependencies_and_render)
 
         threading.Thread(target=target, daemon=True).start()
 
 
 def main():
-    root = tk.Tk()
-    _app = ManagerApp(root)
-    root.mainloop()
+    app = ManagerApp()
+    app.mainloop()
 
 
 if __name__ == "__main__":
