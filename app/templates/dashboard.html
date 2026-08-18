@@ -161,7 +161,7 @@
                 Add Synced Playlist
             </h3>
             
-            <form hx-post="/api/synced-playlists" hx-target="#synced-playlists-container" hx-on::after-request="showAddModal = false; this.reset();" class="space-y-4">
+            <form hx-post="/api/synced-playlists" hx-target="#synced-playlists-container" @submit="showAddModal = false" hx-on:htmx:after-request="showAddModal = false; this.reset()" class="space-y-4">
                 <div>
                     <label class="block text-xs font-semibold text-[#a1a1aa] uppercase mb-1">Playlist URL *</label>
                     <input type="url" name="url" placeholder="https://open.spotify.com/playlist/... or YouTube/SoundCloud URL" required
@@ -192,7 +192,7 @@
 
                 <div class="pt-4 flex justify-end gap-3 border-t border-[#3f3f46]">
                     <button type="button" @click="showAddModal = false" class="px-4 py-2 rounded-lg text-sm text-[#a1a1aa] hover:text-white bg-[#1e1e24] border border-[#3f3f46]">Cancel</button>
-                    <button type="submit" class="px-5 py-2 rounded-lg text-sm font-bold text-white bg-[#d40060] hover:bg-[#a3004a] shadow-md">Add & Start Sync</button>
+                    <button type="submit" @click="showAddModal = false" class="px-5 py-2 rounded-lg text-sm font-bold text-white bg-[#d40060] hover:bg-[#a3004a] shadow-md">Add & Start Sync</button>
                 </div>
             </form>
         </div>
@@ -204,7 +204,7 @@
         <div @click.away="showEditModal = false" class="bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-2xl max-w-md w-full p-6 text-left">
             <h3 class="text-lg font-bold text-white mb-4">Edit Synced Playlist</h3>
             
-            <form :hx-put="'/api/synced-playlists/' + editPlaylist.id" hx-target="#synced-playlists-container" hx-on::after-request="showEditModal = false;" class="space-y-4">
+            <form :hx-put="'/api/synced-playlists/' + editPlaylist.id" hx-target="#synced-playlists-container" @submit="showEditModal = false" hx-on:htmx:after-request="showEditModal = false" class="space-y-4">
                 <div>
                     <label class="block text-xs font-semibold text-[#a1a1aa] uppercase mb-1">Playlist Title</label>
                     <input type="text" name="title" x-model="editPlaylist.title" required
@@ -227,7 +227,7 @@
 
                 <div class="pt-4 flex justify-end gap-3 border-t border-[#3f3f46]">
                     <button type="button" @click="showEditModal = false" class="px-4 py-2 rounded-lg text-sm text-[#a1a1aa] hover:text-white bg-[#1e1e24] border border-[#3f3f46]">Cancel</button>
-                    <button type="submit" class="px-5 py-2 rounded-lg text-sm font-bold text-white bg-[#d40060] hover:bg-[#a3004a] shadow-md">Save Changes</button>
+                    <button type="submit" @click="showEditModal = false" class="px-5 py-2 rounded-lg text-sm font-bold text-white bg-[#d40060] hover:bg-[#a3004a] shadow-md">Save Changes</button>
                 </div>
             </form>
         </div>
@@ -243,7 +243,7 @@
             </h3>
             <p class="text-xs text-[#a1a1aa] mb-4">Are you sure you want to stop tracking <strong class="text-white" x-text="deleteTarget.title"></strong>?</p>
             
-            <form :hx-delete="'/api/synced-playlists/' + deleteTarget.id" hx-target="#synced-playlists-container" hx-on::after-request="showDeleteModal = false;" class="space-y-4">
+            <form :hx-delete="'/api/synced-playlists/' + deleteTarget.id" hx-target="#synced-playlists-container" @submit="showDeleteModal = false" hx-on:htmx:after-request="showDeleteModal = false" class="space-y-4">
                 <input type="hidden" name="delete_files" :value="deleteFiles">
                 
                 <div class="space-y-2 bg-[#1e1e24] p-3 rounded-lg border border-[#3f3f46]">
