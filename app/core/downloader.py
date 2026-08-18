@@ -246,7 +246,7 @@ def handle_ytdlp(
     is_youtube = bool(re.search(r"(youtube\.com|youtu\.be)", url))
 
     try:
-        cmd_meta = ["yt-dlp"]
+        cmd_meta = ["yt-dlp", "--yes-playlist", "--ignore-errors"]
         if is_youtube:
             cmd_meta.extend(["--extractor-args", "youtube:player_client=android,web,ios"])
         cmd_meta.extend(["-J", "--flat-playlist", url])
@@ -319,7 +319,7 @@ def handle_ytdlp(
                 f.write(f"{target_url}\n")
 
         # Download remaining tracks
-        cmd_dl = ["yt-dlp"]
+        cmd_dl = ["yt-dlp", "--yes-playlist", "--ignore-errors"]
         if is_youtube:
             cmd_dl.extend(["--extractor-args", "youtube:player_client=android,web,ios"])
 
@@ -349,7 +349,10 @@ def handle_ytdlp(
                 "/downloads/%(playlist_title|)s/%(title)s.%(ext)s",
             ])
 
-        subprocess.run(cmd_dl, check=True)
+        dl_res = subprocess.run(cmd_dl, capture_output=True, text=True)
+        if dl_res.returncode not in (0, 1):
+            error_msg = dl_res.stderr.strip() if dl_res.stderr else f"yt-dlp exit code {dl_res.returncode}"
+            raise RuntimeError(f"yt-dlp download failed: {error_msg[:200]}")
 
         # Mark as completed
         for track, track_id in to_download:
@@ -504,7 +507,7 @@ def sync_playlist_job(synced_playlist_id: int, db: Session) -> dict:
                     os.remove(temp_file)
         else:
             is_youtube = bool(re.search(r"(youtube\.com|youtu\.be)", url))
-            cmd = ["yt-dlp"]
+            cmd = ["yt-dlp", "--yes-playlist", "--ignore-errors"]
             if is_youtube:
                 cmd.extend(["--extractor-args", "youtube:player_client=android,web,ios"])
             cmd.extend(["-J", "--flat-playlist", url])
