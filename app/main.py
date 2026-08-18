@@ -187,23 +187,30 @@ async def update_settings(
 async def api_tracks(request: Request, db: Session = Depends(get_db)):
     tracks = (
         db.query(models.Download)
+        .filter(models.Download.synced_playlist_id.is_(None))
         .order_by(models.Download.downloaded_at.desc())
         .limit(150)
         .all()
     )
     queued = (
-        db.query(models.Download).filter(models.Download.status == "Queued").count()
+        db.query(models.Download)
+        .filter(models.Download.synced_playlist_id.is_(None), models.Download.status == "Queued")
+        .count()
     )
     downloading = (
         db.query(models.Download)
-        .filter(models.Download.status == "Downloading")
+        .filter(models.Download.synced_playlist_id.is_(None), models.Download.status == "Downloading")
         .count()
     )
     done = (
-        db.query(models.Download).filter(models.Download.status == "Completed").count()
+        db.query(models.Download)
+        .filter(models.Download.synced_playlist_id.is_(None), models.Download.status == "Completed")
+        .count()
     )
     errors = (
-        db.query(models.Download).filter(models.Download.status == "Failed").count()
+        db.query(models.Download)
+        .filter(models.Download.synced_playlist_id.is_(None), models.Download.status == "Failed")
+        .count()
     )
 
     grouped_jobs = {}

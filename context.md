@@ -23,3 +23,5 @@
 - **Add Playlist Modal**: The setup overlay for adding a new Synced Playlist with URL, Sync Mode selection, and title override options.
 - **Synced Playlist Card**: The UI component displaying playlist metadata, platform badge, sync status (`Active`, `Paused`, `Syncing`, `Failed`), and actions (`Sync-Now`, `Pause/Resume`, `Edit`, `Delete`).
 - **Deletion Confirmation Modal**: The modal prompting users to choose between keeping or purging downloaded files when deleting a Synced Playlist card.
+- **On-Demand History Scope**: The strict scope filtering for the On-Demand Downloader history table, displaying strictly manual on-demand downloads (`synced_playlist_id IS NULL`) and suppressing Synced Playlist background sync jobs.
+- **Tab State Persistence**: The client-side mechanism using `localStorage` to retain the user's active view (`On-Demand Downloader View` vs `Synced Playlists View`) across browser refreshes (F5).
