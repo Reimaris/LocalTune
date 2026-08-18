@@ -37,6 +37,15 @@ async def log_generator():
         yield f"data: {safe_msg}\n\n"
 
 
+class EndpointFilter(logging.Filter):
+    """
+    Suppresses noisy polling logs for HTMX background updates.
+    """
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return "/api/tracks" not in msg and "/api/synced-playlists" not in msg
+
+
 def setup_logging(log_level: str = "INFO"):
     """
     Sets up the application logging architecture.
@@ -85,8 +94,12 @@ def setup_logging(log_level: str = "INFO"):
     root_logger.addHandler(file_handler)
     root_logger.addHandler(queue_handler)
 
-    # Silence noisy third-party loggers
+    # Silence noisy third-party loggers and polling endpoints
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
+    
+    uvicorn_access = logging.getLogger("uvicorn.access")
+    uvicorn_access.addFilter(EndpointFilter())
 
     return root_logger
+

@@ -101,7 +101,7 @@ def handle_spotify(
             + auth_args
             + [
                 "--yt-dlp-args",
-                "extractor-args=youtube:player_client=android",
+                "extractor-args=youtube:player_client=android,web,ios",
                 "save",
                 url,
                 "--save-file",
@@ -174,7 +174,7 @@ def handle_spotify(
             + auth_args
             + [
                 "--yt-dlp-args",
-                "extractor-args=youtube:player_client=android",
+                "extractor-args=youtube:player_client=android,web,ios",
                 temp_file,
                 "--output",
                 f"/downloads/{{list-name}}/{{artist}} - {{title}}.{file_format}",
@@ -248,7 +248,7 @@ def handle_ytdlp(
     try:
         cmd_meta = ["yt-dlp"]
         if is_youtube:
-            cmd_meta.extend(["--extractor-args", "youtube:player_client=android"])
+            cmd_meta.extend(["--extractor-args", "youtube:player_client=android,web,ios"])
         cmd_meta.extend(["-J", "--flat-playlist", url])
 
         result = subprocess.run(
@@ -321,7 +321,7 @@ def handle_ytdlp(
         # Download remaining tracks
         cmd_dl = ["yt-dlp"]
         if is_youtube:
-            cmd_dl.extend(["--extractor-args", "youtube:player_client=android"])
+            cmd_dl.extend(["--extractor-args", "youtube:player_client=android,web,ios"])
 
         if media_type == "audio":
             cmd_dl.extend([
@@ -434,7 +434,7 @@ def fetch_playlist_title(url: str, db: Session = None) -> str:
                 cmd = [
                     "yt-dlp",
                     "--extractor-args",
-                    "youtube:player_client=android",
+                    "youtube:player_client=android,web,ios",
                     "-J",
                     "--flat-playlist",
                     url,
@@ -506,7 +506,7 @@ def sync_playlist_job(synced_playlist_id: int, db: Session) -> dict:
             is_youtube = bool(re.search(r"(youtube\.com|youtu\.be)", url))
             cmd = ["yt-dlp"]
             if is_youtube:
-                cmd.extend(["--extractor-args", "youtube:player_client=android"])
+                cmd.extend(["--extractor-args", "youtube:player_client=android,web,ios"])
             cmd.extend(["-J", "--flat-playlist", url])
             result = subprocess.run(
                 cmd, check=True, capture_output=True, text=True, timeout=1200
