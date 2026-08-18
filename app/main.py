@@ -443,8 +443,12 @@ async def delete_synced_playlist(
         .filter(models.SyncedPlaylist.id == playlist_id)
         .first()
     )
+    should_delete_files = (
+        delete_files.lower() in ("true", "1", "yes")
+        or request.query_params.get("delete_files", "false").lower() in ("true", "1", "yes")
+    )
     if sp:
-        if delete_files.lower() in ("true", "1", "yes"):
+        if should_delete_files:
             # Purge local files associated with this playlist
             downloads = (
                 db.query(models.Download)

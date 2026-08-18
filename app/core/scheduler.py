@@ -13,6 +13,8 @@ SYNC_INTERVAL_SECONDS = 21600
 async def periodic_sync_loop():
     """Background task loop that runs every 6 hours to sync active playlists."""
     logger.info("Starting global 6-hour Playlist Sync background scheduler...")
+    # Delay initial check slightly on startup so dashboard loads instantly
+    await asyncio.sleep(5)
     while True:
         try:
             db = SessionLocal()
@@ -28,7 +30,8 @@ async def periodic_sync_loop():
                     )
                     for playlist in active_playlists:
                         try:
-                            sync_playlist_job(playlist.id, db)
+                            # Run synchronous sync job in a worker thread so main HTTP loop is never blocked
+                            await asyncio.to_thread(sync_playlist_job, playlist.id, db)
                         except Exception as e:
                             logger.error(
                                 f"Error syncing playlist '{playlist.title}' (ID {playlist.id}): {e}"
