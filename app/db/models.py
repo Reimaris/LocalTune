@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
 from datetime import datetime, timezone
 from app.db.database import Base
 
@@ -14,7 +14,22 @@ class Download(Base):
     status = Column(String, default="Completed")
     job_id = Column(String, index=True, nullable=True)
     job_title = Column(String, nullable=True)
+    synced_playlist_id = Column(Integer, ForeignKey("synced_playlists.id"), nullable=True)
     downloaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class SyncedPlaylist(Base):
+    __tablename__ = "synced_playlists"
+
+    id = Column(Integer, primary_key=True, index=True)
+    url = Column(String, unique=True, index=True, nullable=False)
+    title = Column(String, nullable=False)
+    sync_mode = Column(String, default="append_only")  # "append_only" or "mirror"
+    is_active = Column(Boolean, default=True)
+    status = Column(String, default="Active")  # "Active", "Syncing", "Paused", "Failed"
+    last_error = Column(String, nullable=True)
+    last_synced_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class Settings(Base):
@@ -25,3 +40,4 @@ class Settings(Base):
     telegram_chat_id = Column(String, nullable=True)
     spotify_client_id = Column(String, nullable=True)
     spotify_client_secret = Column(String, nullable=True)
+

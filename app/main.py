@@ -1,5 +1,6 @@
 import re
 import os
+import asyncio
 from fastapi import FastAPI, Request, Depends, Form, BackgroundTasks
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
@@ -9,7 +10,9 @@ from sqlalchemy import text
 from pathlib import Path
 import uuid
 from app.core.logging_config import setup_logging, log_generator
-from app.worker import process_download
+from app.worker import process_download, process_playlist_sync
+from app.core.downloader import fetch_playlist_title
+from app.core.scheduler import periodic_sync_loop
 from app.db import models
 from app.db.database import engine, get_db
 
@@ -27,39 +30,49 @@ try:
 except Exception:
     pass
 
+try:
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE downloads ADD COLUMN synced_playlist_id INTEGER"))
+        conn.commit()
+except Exception:
+    pass
+
 app = FastAPI(title="LocalTune")
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Starts background periodic 6-hour playlist sync task on app startup."""
+    asyncio.create_task(periodic_sync_loop())
+
 
 # Setup static files and templates
 BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
-# Mount downloads directory so it's accessible via /downloads
-downloads_dir = "/downloads"
-os.makedirs(downloads_dir, exist_ok=True)
-app.mount("/downloads", StaticFiles(directory=downloads_dir), name="downloads")
+downloads_dir = os.getenv("DOWNLOAD_DIR", "/downloads")
+try:
+    os.makedirs(downloads_dir, exist_ok=True)
+    app.mount("/downloads", StaticFiles(directory=downloads_dir), name="downloads")
+except Exception as e:
+    logger.warning(f"Could not mount downloads directory {downloads_dir}: {e}")
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
-
-# No longer using Redis/RQ
 
 
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):
-    """
-    Verification Route:
-    1. Writes a test log entry.
-    2. Performs a basic read query.
-    3. Returns JSON status.
-    """
+    """Verification Route"""
     logger.info("Health check endpoint accessed.")
     try:
-        # Perform a basic read query against the downloads table (count rows)
         count = db.query(models.Download).count()
+        playlists_count = db.query(models.SyncedPlaylist).count()
         return {
             "status": "ok",
             "logger": "configured",
             "database": "connected",
             "downloads_count": count,
+            "synced_playlists_count": playlists_count,
         }
     except Exception as e:
         logger.error(f"Database connection failed: {e}")
@@ -68,10 +81,7 @@ def health_check(db: Session = Depends(get_db)):
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    """
-    Renders the main dashboard.
-    """
-    # Later we will fetch data from DB and queue to render the status
+    """Renders the main dashboard."""
     context = {"request": request, "title": "LocalTune Dashboard"}
     return templates.TemplateResponse("dashboard.html", context)
 
@@ -85,24 +95,18 @@ async def download_url(
     file_format: str = Form("opus"),
     db: Session = Depends(get_db),
 ):
-    """
-    Receives URL from the frontend, validates it, and queues for download.
-    Returns HTMX snippet.
-    """
+    """Receives URL from frontend, validates it, and queues for download."""
     logger.info(f"Received download request for URL: {url}")
 
-    # Basic Validation
-    is_youtube = re.search(r"(youtube\.com|youtu\.be)", url)
-    is_spotify = re.search(r"(spotify\.com)", url)
-
-    if not (is_youtube or is_spotify):
+    if not url or not (url.startswith("http://") or url.startswith("https://")):
         return """
         <div class="bg-red-900 border border-red-700 text-white px-4 py-3 rounded relative mb-4" role="alert">
           <strong class="font-bold">Error!</strong>
-          <span class="block sm:inline">Invalid URL. Must be a valid Spotify or YouTube link.</span>
+          <span class="block sm:inline">Invalid URL format. Please provide a valid HTTP/HTTPS link.</span>
         </div>
         """
 
+    is_spotify = bool(re.search(r"(spotify\.com)", url))
     if is_spotify and media_type == "video":
         return """
         <div class="bg-red-900 border border-red-700 text-white px-4 py-3 rounded relative mb-4" role="alert">
@@ -265,6 +269,204 @@ async def delete_track(request: Request, track_id: int, db: Session = Depends(ge
         db.delete(track)
         db.commit()
     return ""
+
+
+# SYNCED PLAYLISTS API ENDPOINTS
+
+
+@app.get("/api/synced-playlists", response_class=HTMLResponse)
+async def get_synced_playlists(request: Request, db: Session = Depends(get_db)):
+    """Returns HTMX partial grid of Synced Playlists."""
+    synced_playlists = (
+        db.query(models.SyncedPlaylist)
+        .order_by(models.SyncedPlaylist.created_at.desc())
+        .all()
+    )
+    return templates.TemplateResponse(
+        "partials/synced_playlists_grid.html",
+        {"request": request, "synced_playlists": synced_playlists},
+    )
+
+
+@app.post("/api/synced-playlists", response_class=HTMLResponse)
+async def add_synced_playlist(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    url: str = Form(...),
+    sync_mode: str = Form("append_only"),
+    title: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Creates a new Synced Playlist and triggers initial background sync."""
+    if not title or not title.strip():
+        title = fetch_playlist_title(url, db)
+
+    # Check if URL already tracked
+    existing = (
+        db.query(models.SyncedPlaylist)
+        .filter(models.SyncedPlaylist.url == url)
+        .first()
+    )
+    if existing:
+        existing.title = title
+        existing.sync_mode = sync_mode
+        existing.is_active = True
+        existing.status = "Syncing"
+        db.commit()
+        playlist_id = existing.id
+    else:
+        new_sp = models.SyncedPlaylist(
+            url=url,
+            title=title,
+            sync_mode=sync_mode,
+            is_active=True,
+            status="Syncing",
+        )
+        db.add(new_sp)
+        db.commit()
+        playlist_id = new_sp.id
+
+    background_tasks.add_task(process_playlist_sync, playlist_id)
+
+    synced_playlists = (
+        db.query(models.SyncedPlaylist)
+        .order_by(models.SyncedPlaylist.created_at.desc())
+        .all()
+    )
+    return templates.TemplateResponse(
+        "partials/synced_playlists_grid.html",
+        {"request": request, "synced_playlists": synced_playlists},
+    )
+
+
+@app.post("/api/synced-playlists/{playlist_id}/sync", response_class=HTMLResponse)
+async def manual_sync_playlist(
+    playlist_id: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Triggers on-demand manual sync for a specific Synced Playlist."""
+    sp = (
+        db.query(models.SyncedPlaylist)
+        .filter(models.SyncedPlaylist.id == playlist_id)
+        .first()
+    )
+    if sp:
+        sp.status = "Syncing"
+        db.commit()
+        background_tasks.add_task(process_playlist_sync, playlist_id)
+
+    synced_playlists = (
+        db.query(models.SyncedPlaylist)
+        .order_by(models.SyncedPlaylist.created_at.desc())
+        .all()
+    )
+    return templates.TemplateResponse(
+        "partials/synced_playlists_grid.html",
+        {"request": request, "synced_playlists": synced_playlists},
+    )
+
+
+@app.post("/api/synced-playlists/{playlist_id}/toggle", response_class=HTMLResponse)
+async def toggle_sync_playlist(
+    playlist_id: int, request: Request, db: Session = Depends(get_db)
+):
+    """Toggles active/paused state of a Synced Playlist."""
+    sp = (
+        db.query(models.SyncedPlaylist)
+        .filter(models.SyncedPlaylist.id == playlist_id)
+        .first()
+    )
+    if sp:
+        sp.is_active = not sp.is_active
+        sp.status = "Active" if sp.is_active else "Paused"
+        db.commit()
+
+    synced_playlists = (
+        db.query(models.SyncedPlaylist)
+        .order_by(models.SyncedPlaylist.created_at.desc())
+        .all()
+    )
+    return templates.TemplateResponse(
+        "partials/synced_playlists_grid.html",
+        {"request": request, "synced_playlists": synced_playlists},
+    )
+
+
+@app.put("/api/synced-playlists/{playlist_id}", response_class=HTMLResponse)
+async def update_synced_playlist(
+    playlist_id: int,
+    request: Request,
+    title: str = Form(...),
+    sync_mode: str = Form("append_only"),
+    db: Session = Depends(get_db),
+):
+    """Updates title and sync_mode of a Synced Playlist."""
+    sp = (
+        db.query(models.SyncedPlaylist)
+        .filter(models.SyncedPlaylist.id == playlist_id)
+        .first()
+    )
+    if sp:
+        sp.title = title
+        sp.sync_mode = sync_mode
+        db.commit()
+
+    synced_playlists = (
+        db.query(models.SyncedPlaylist)
+        .order_by(models.SyncedPlaylist.created_at.desc())
+        .all()
+    )
+    return templates.TemplateResponse(
+        "partials/synced_playlists_grid.html",
+        {"request": request, "synced_playlists": synced_playlists},
+    )
+
+
+@app.delete("/api/synced-playlists/{playlist_id}", response_class=HTMLResponse)
+async def delete_synced_playlist(
+    playlist_id: int,
+    request: Request,
+    delete_files: str = Form("false"),
+    db: Session = Depends(get_db),
+):
+    """Deletes a Synced Playlist entity, with optional file purging."""
+    sp = (
+        db.query(models.SyncedPlaylist)
+        .filter(models.SyncedPlaylist.id == playlist_id)
+        .first()
+    )
+    if sp:
+        if delete_files.lower() in ("true", "1", "yes"):
+            # Purge local files associated with this playlist
+            downloads = (
+                db.query(models.Download)
+                .filter(models.Download.synced_playlist_id == sp.id)
+                .all()
+            )
+            for dl in downloads:
+                if dl.file_path and os.path.exists(dl.file_path):
+                    try:
+                        os.remove(dl.file_path)
+                    except Exception as e:
+                        logger.error(
+                            f"Error deleting file {dl.file_path} on playlist purge: {e}"
+                        )
+                db.delete(dl)
+
+        db.delete(sp)
+        db.commit()
+
+    synced_playlists = (
+        db.query(models.SyncedPlaylist)
+        .order_by(models.SyncedPlaylist.created_at.desc())
+        .all()
+    )
+    return templates.TemplateResponse(
+        "partials/synced_playlists_grid.html",
+        {"request": request, "synced_playlists": synced_playlists},
+    )
 
 
 @app.get("/api/logs")

@@ -1,0 +1,127 @@
+{% if not synced_playlists %}
+<div class="col-span-full bg-[#24242b] border border-[#3f3f46] rounded-xl p-12 text-center shadow-lg">
+    <svg class="w-12 h-12 text-[#a1a1aa] mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+    </svg>
+    <h3 class="text-lg font-bold text-white mb-2">No Synced Playlists</h3>
+    <p class="text-[#a1a1aa] text-sm mb-6 max-w-md mx-auto">Add your first playlist link to start automatically checking and syncing new tracks every 6 hours.</p>
+    <button @click="showAddModal = true" class="bg-[#d40060] hover:bg-[#a3004a] text-white font-bold py-2.5 px-6 rounded-lg transition-colors inline-flex items-center gap-2 shadow-md">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+        Add Synced Playlist
+    </button>
+</div>
+{% else %}
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 col-span-full">
+    {% for sp in synced_playlists %}
+    <div class="bg-[#24242b] border border-[#3f3f46] hover:border-[#52525b] rounded-xl shadow-lg p-6 flex flex-col justify-between transition-all duration-200 group relative">
+        <div>
+            <!-- Top Badges Row -->
+            <div class="flex items-center justify-between gap-2 mb-4">
+                <!-- Platform Badge -->
+                {% if 'spotify.com' in sp.url %}
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800/60">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.376 0 0 5.376 0 12s5.376 12 12 12 12-5.376 12-12S18.624 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.18-1.2-.18-1.38-.72-.18-.6.18-1.2.72-1.38 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+                        Spotify
+                    </span>
+                {% elif 'youtube.com' in sp.url or 'youtu.be' in sp.url %}
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-950 text-red-400 border border-red-800/60">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+                        YouTube
+                    </span>
+                {% elif 'soundcloud.com' in sp.url %}
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-950 text-orange-400 border border-orange-800/60">
+                        SoundCloud
+                    </span>
+                {% else %}
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-950 text-purple-400 border border-purple-800/60">
+                        Media Stream
+                    </span>
+                {% endif %}
+
+                <!-- Status Badge -->
+                {% if sp.status == 'Syncing' %}
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-900/40 text-yellow-400 border border-yellow-700/50">
+                        <span class="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></span> Syncing...
+                    </span>
+                {% elif not sp.is_active or sp.status == 'Paused' %}
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-800 text-zinc-400 border border-zinc-700">
+                        <span class="w-2 h-2 rounded-full bg-zinc-500"></span> Paused
+                    </span>
+                {% elif sp.status == 'Failed' %}
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-900/40 text-red-400 border border-red-700/50" title="{{ sp.last_error }}">
+                        <span class="w-2 h-2 rounded-full bg-red-500"></span> Failed
+                    </span>
+                {% else %}
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-900/40 text-emerald-400 border border-emerald-700/50">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Active
+                    </span>
+                {% endif %}
+            </div>
+
+            <!-- Playlist Title -->
+            <h3 class="text-lg font-bold text-white mb-2 truncate" title="{{ sp.title }}">{{ sp.title }}</h3>
+            
+            <!-- URL -->
+            <a href="{{ sp.url }}" target="_blank" class="text-xs text-[#a1a1aa] hover:text-[#d40060] transition-colors truncate block mb-4 flex items-center gap-1">
+                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                <span class="truncate">{{ sp.url }}</span>
+            </a>
+
+            <!-- Info Badges Row -->
+            <div class="grid grid-cols-2 gap-2 text-xs mb-6">
+                <div class="bg-[#1e1e24] border border-[#3f3f46] p-2.5 rounded-lg">
+                    <span class="text-[#a1a1aa] block text-[10px] uppercase font-semibold tracking-wider">Sync Mode</span>
+                    <span class="font-bold text-white uppercase text-[11px]">
+                        {% if sp.sync_mode == 'mirror' %}
+                            <span class="text-purple-400">Mirror / Prune</span>
+                        {% else %}
+                            <span class="text-blue-400">Append-Only</span>
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="bg-[#1e1e24] border border-[#3f3f46] p-2.5 rounded-lg">
+                    <span class="text-[#a1a1aa] block text-[10px] uppercase font-semibold tracking-wider">Last Synced</span>
+                    <span class="font-medium text-white truncate block">
+                        {% if sp.last_synced_at %}
+                            {{ sp.last_synced_at.strftime('%b %d, %H:%M') }}
+                        {% else %}
+                            Never
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card Actions Footer -->
+        <div class="pt-4 border-t border-[#3f3f46] flex items-center justify-between gap-2">
+            <!-- Sync Now Button -->
+            <button hx-post="/api/synced-playlists/{{ sp.id }}/sync" hx-target="#synced-playlists-container" :disabled="{{ 'true' if sp.status == 'Syncing' else 'false' }}" class="bg-[#d40060] hover:bg-[#a3004a] disabled:opacity-50 text-white font-bold py-2 px-3 rounded-lg text-xs transition-colors flex items-center gap-1.5 shadow-sm">
+                <svg class="w-3.5 h-3.5 {{ 'animate-spin' if sp.status == 'Syncing' else '' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                Sync Now
+            </button>
+
+            <div class="flex items-center gap-1">
+                <!-- Pause/Resume Button -->
+                <button hx-post="/api/synced-playlists/{{ sp.id }}/toggle" hx-target="#synced-playlists-container" class="p-2 text-[#a1a1aa] hover:text-white hover:bg-[#3f3f46] rounded-lg transition-colors" title="{% if sp.is_active %}Pause Syncing{% else %}Resume Syncing{% endif %}">
+                    {% if sp.is_active %}
+                        <svg class="w-4 h-4 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    {% else %}
+                        <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    {% endif %}
+                </button>
+
+                <!-- Edit Button -->
+                <button @click="openEditModal({ id: {{ sp.id }}, title: '{{ sp.title | e }}', url: '{{ sp.url | e }}', sync_mode: '{{ sp.sync_mode }}', is_active: {{ 'true' if sp.is_active else 'false' }} })" class="p-2 text-[#a1a1aa] hover:text-white hover:bg-[#3f3f46] rounded-lg transition-colors" title="Edit Settings">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                </button>
+
+                <!-- Delete Button -->
+                <button @click="openDeleteModal({ id: {{ sp.id }}, title: '{{ sp.title | e }}' })" class="p-2 text-[#a1a1aa] hover:text-red-500 hover:bg-[#3f3f46] rounded-lg transition-colors" title="Delete Synced Playlist">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}

@@ -2,7 +2,7 @@ import re
 import logging
 from app.db.database import SessionLocal
 from app.db import models
-from app.core.downloader import handle_spotify, handle_youtube
+from app.core.downloader import handle_spotify, handle_ytdlp, sync_playlist_job
 from app.core.notifications import send_telegram_notification
 
 logger = logging.getLogger(__name__)
@@ -21,12 +21,9 @@ def process_download(
         if re.search(r"(spotify\.com)", url):
             logger.info("Routing to Spotify handler...")
             title = handle_spotify(url, db, job_id, file_format)
-        elif re.search(r"(youtube\.com|youtu\.be)", url):
-            logger.info("Routing to YouTube handler...")
-            title = handle_youtube(url, db, job_id, media_type, file_format)
         else:
-            logger.error("Unsupported URL type in worker.")
-            return
+            logger.info("Routing to generic yt-dlp fallback handler...")
+            title = handle_ytdlp(url, db, job_id, media_type, file_format)
 
         # Remove the placeholder row now that real tracks are registered
         placeholder = (
@@ -53,5 +50,17 @@ def process_download(
         db.commit()
         metadata_str = f"URL: {url}\nFormat: {file_format.upper()} ({media_type.capitalize()})\nError: {str(e)[:200]}"
         send_telegram_notification(f"Processing Error\n\n{metadata_str}", is_error=True)
+    finally:
+        db.close()
+
+
+def process_playlist_sync(synced_playlist_id: int):
+    """Background task to execute sync for a Synced Playlist entity."""
+    logger.info(f"Worker executing sync for playlist ID: {synced_playlist_id}")
+    db = SessionLocal()
+    try:
+        sync_playlist_job(synced_playlist_id, db)
+    except Exception as e:
+        logger.error(f"Error executing playlist sync for {synced_playlist_id}: {e}")
     finally:
         db.close()

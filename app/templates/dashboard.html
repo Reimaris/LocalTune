@@ -2,104 +2,269 @@
 
 {% block content %}
 
-<!-- Download Form Area -->
-<div class="bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-lg p-6 mb-8">
-    <h2 class="text-lg font-bold text-white mb-4">Download Music</h2>
-    <form hx-post="/download" hx-target="#global-alert" hx-swap="innerHTML" hx-on::after-request="this.reset(); url=''" class="flex flex-col lg:flex-row gap-4" x-data="{ url: '', audioFormat: 'opus', videoFormat: 'mkv', fileFormat: 'opus' }">
-        <input type="hidden" name="file_format" :value="fileFormat">
-        
-        <div class="flex-1 relative">
-            <input type="url" name="url" x-model="url" placeholder="Paste Spotify or YouTube URL here..." required autocomplete="off"
-                class="w-full bg-[#111115] border border-[#3f3f46] focus:border-[#d40060] rounded-lg px-4 py-3 text-white focus:outline-none transition-colors">
-        </div>
-        
-        <div class="flex gap-2 flex-wrap">
-            <!-- Music Button -->
-            <div class="relative flex" x-data="{ open: false }">
-                <button type="submit" name="media_type" value="audio" @click="fileFormat = audioFormat" class="bg-[#d40060] hover:bg-[#a3004a] text-white font-bold py-3 px-4 sm:px-6 rounded-l-lg transition-colors shadow-md shadow-pink-900/20 whitespace-nowrap flex items-center gap-2">
-                    <svg class="w-5 h-5 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
-                    Music (<span x-text="audioFormat"></span>)
-                </button>
-                <button type="button" @click="open = !open" @click.away="open = false" class="bg-[#b30052] hover:bg-[#a3004a] text-white px-2 rounded-r-lg border-l border-[#d40060] transition-colors">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                </button>
-                <div x-show="open" x-transition class="absolute top-full right-0 mt-1 bg-[#24242b] border border-[#3f3f46] rounded-lg shadow-lg overflow-hidden z-10 w-24" style="display: none;">
-                    <button type="button" @click="audioFormat = 'mp3'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white">mp3</button>
-                    <button type="button" @click="audioFormat = 'opus'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white">opus</button>
-                    <button type="button" @click="audioFormat = 'flac'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white">flac</button>
-                </div>
-            </div>
+<div x-data="{ 
+    activeFeature: 'on-demand', 
+    showAddModal: false, 
+    showEditModal: false, 
+    showDeleteModal: false, 
+    editPlaylist: { id: null, title: '', url: '', sync_mode: 'append_only', is_active: true }, 
+    deleteTarget: { id: null, title: '' }, 
+    deleteFiles: 'false',
+    openEditModal(sp) {
+        this.editPlaylist = { ...sp };
+        this.showEditModal = true;
+    },
+    openDeleteModal(sp) {
+        this.deleteTarget = { id: sp.id, title: sp.title };
+        this.deleteFiles = 'false';
+        this.showDeleteModal = true;
+    }
+}">
 
-            <!-- Video Button -->
-            <div class="relative flex" x-data="{ open: false }">
-                <button type="submit" name="media_type" value="video" @click="fileFormat = videoFormat" :disabled="url.includes('spotify.com')" :class="url.includes('spotify.com') ? 'opacity-50 cursor-not-allowed bg-[#3f3f46]' : 'bg-[#007acc] hover:bg-[#005c99] text-white'" class="font-bold py-3 px-4 sm:px-6 rounded-l-lg transition-colors shadow-md whitespace-nowrap flex items-center gap-2">
-                    <svg class="w-5 h-5 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                    Video (<span x-text="videoFormat"></span>)
-                </button>
-                <button type="button" @click="open = !open" @click.away="open = false" :disabled="url.includes('spotify.com')" :class="url.includes('spotify.com') ? 'opacity-50 cursor-not-allowed bg-[#3f3f46]' : 'bg-[#005c99] hover:bg-[#005c99] text-white'" class="px-2 rounded-r-lg border-l border-black/20 transition-colors">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                </button>
-                <div x-show="open" x-transition class="absolute top-full right-0 mt-1 bg-[#24242b] border border-[#3f3f46] rounded-lg shadow-lg overflow-hidden z-10 w-24" style="display: none;">
-                    <button type="button" @click="videoFormat = 'mp4'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white">mp4</button>
-                    <button type="button" @click="videoFormat = 'mkv'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white">mkv</button>
-                </div>
-            </div>
-        </div>
-    </form>
-</div>
-
-<!-- Stat Cards -->
-<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-    <!-- Queue Card -->
-    <div class="bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-lg overflow-hidden flex flex-col">
-        <div class="bg-gradient-to-r from-[#d40060] to-[#9d0047] p-4 flex items-center justify-between">
-            <div class="flex items-center gap-2 text-white">
-                <h2 class="text-lg font-bold tracking-wider uppercase">Downloads</h2>
-            </div>
-            <div class="text-2xl font-light text-white"></div>
-        </div>
-        <div id="stat-cards" class="grid grid-cols-3 divide-x divide-[#3f3f46] bg-[#1e1e24] flex-1">
-            <div class="p-4 flex flex-col items-center justify-center">
-                <div class="text-xs text-[#a1a1aa] uppercase tracking-wider mb-1 font-semibold">Queued</div>
-                <div class="text-2xl font-medium text-white">0</div>
-            </div>
-            <div class="p-4 flex flex-col items-center justify-center">
-                <div class="text-xs text-[#a1a1aa] uppercase tracking-wider mb-1 font-semibold">Done</div>
-                <div class="text-2xl font-medium text-emerald-500">0</div>
-            </div>
-            <div class="p-4 flex flex-col items-center justify-center">
-                <div class="text-xs text-[#a1a1aa] uppercase tracking-wider mb-1 font-semibold">Errors</div>
-                <div class="text-2xl font-medium text-red-500">0</div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Main Table Area -->
-<div class="bg-[#24242b] border border-[#3f3f46] rounded-lg shadow overflow-hidden" x-data="{ tab: 'all', search: '', showStatus: false, expandedPlaylists: {} }">
-    
-    <!-- Table Toolbar: Tabs & Search -->
-    <div class="p-4 border-b border-[#3f3f46] flex flex-col md:flex-row justify-between items-center gap-4">
-        <!-- Tabs -->
-        <div class="flex gap-2 bg-[#1e1e24] p-1 rounded-lg border border-[#3f3f46]">
-            <button @click="tab = 'all'; search = ''" :class="{'bg-[#d40060] text-white': tab === 'all', 'text-[#a1a1aa] hover:text-white': tab !== 'all'}" class="px-4 py-1.5 rounded-md text-sm font-medium transition-colors">All Tracks</button>
-        </div>
-
-        <!-- Status Legend & Search -->
-        <div class="flex items-center gap-4 w-full md:w-auto">
-            <div class="relative w-full md:w-64">
-                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#a1a1aa]">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                </div>
-                <input type="text" x-model="search" placeholder="Search..." class="w-full bg-[#111115] border border-[#3f3f46] focus:border-[#d40060] rounded-lg pl-9 pr-4 py-2 text-white focus:outline-none transition-colors text-sm">
-            </div>
+    <!-- Feature Switcher Top Navigation Header -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+        <div class="flex items-center gap-2 bg-[#24242b] p-1.5 rounded-xl border border-[#3f3f46] shadow-md">
+            <button @click="activeFeature = 'on-demand'" :class="activeFeature === 'on-demand' ? 'bg-[#d40060] text-white shadow-md' : 'text-[#a1a1aa] hover:text-white'" class="px-5 py-2 rounded-lg font-bold text-sm transition-all duration-200 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                On-Demand Download
+            </button>
+            <button @click="activeFeature = 'synced-playlists'" :class="activeFeature === 'synced-playlists' ? 'bg-[#d40060] text-white shadow-md' : 'text-[#a1a1aa] hover:text-white'" class="px-5 py-2 rounded-lg font-bold text-sm transition-all duration-200 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                Synced Playlists
+            </button>
         </div>
     </div>
 
-    <!-- Download Table -->
-    <div id="track-list-container" hx-get="/api/tracks" hx-trigger="load, every 2s" class="overflow-x-auto min-h-[400px]">
-        <div class="p-8 text-center text-[#a1a1aa]">Loading tracks...</div>
+    <!-- FEATURE 1: ON-DEMAND DOWNLOADER VIEW -->
+    <div x-show="activeFeature === 'on-demand'" x-transition>
+        <!-- Download Form Area -->
+        <div class="bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-lg p-6 mb-8">
+            <h2 class="text-lg font-bold text-white mb-4">Download Music or Video</h2>
+            <form hx-post="/download" hx-target="#global-alert" hx-swap="innerHTML" hx-on::after-request="this.reset(); url=''" class="flex flex-col lg:flex-row gap-4" x-data="{ url: '', audioFormat: 'opus', videoFormat: 'mkv', fileFormat: 'opus' }">
+                <input type="hidden" name="file_format" :value="fileFormat">
+                
+                <div class="flex-1 relative">
+                    <input type="url" name="url" x-model="url" placeholder="Paste Spotify, YouTube, SoundCloud, or Bandcamp URL..." required autocomplete="off"
+                        class="w-full bg-[#111115] border border-[#3f3f46] focus:border-[#d40060] rounded-lg px-4 py-3 text-white focus:outline-none transition-colors">
+                </div>
+                
+                <div class="flex gap-2 flex-wrap">
+                    <!-- Music Button -->
+                    <div class="relative flex" x-data="{ open: false }">
+                        <button type="submit" name="media_type" value="audio" @click="fileFormat = audioFormat" class="bg-[#d40060] hover:bg-[#a3004a] text-white font-bold py-3 px-4 sm:px-6 rounded-l-lg transition-colors shadow-md shadow-pink-900/20 whitespace-nowrap flex items-center gap-2">
+                            <svg class="w-5 h-5 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
+                            Music (<span x-text="audioFormat"></span>)
+                        </button>
+                        <button type="button" @click="open = !open" @click.away="open = false" class="bg-[#b30052] hover:bg-[#a3004a] text-white px-2 rounded-r-lg border-l border-[#d40060] transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                        <div x-show="open" x-transition class="absolute top-full right-0 mt-1 bg-[#24242b] border border-[#3f3f46] rounded-lg shadow-lg overflow-hidden z-10 w-24" style="display: none;">
+                            <button type="button" @click="audioFormat = 'mp3'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white">mp3</button>
+                            <button type="button" @click="audioFormat = 'opus'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white">opus</button>
+                            <button type="button" @click="audioFormat = 'flac'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white">flac</button>
+                        </div>
+                    </div>
+
+                    <!-- Video Button -->
+                    <div class="relative flex" x-data="{ open: false }">
+                        <button type="submit" name="media_type" value="video" @click="fileFormat = videoFormat" :disabled="url.includes('spotify.com')" :class="url.includes('spotify.com') ? 'opacity-50 cursor-not-allowed bg-[#3f3f46]' : 'bg-[#007acc] hover:bg-[#005c99] text-white'" class="font-bold py-3 px-4 sm:px-6 rounded-l-lg transition-colors shadow-md whitespace-nowrap flex items-center gap-2">
+                            <svg class="w-5 h-5 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                            Video (<span x-text="videoFormat"></span>)
+                        </button>
+                        <button type="button" @click="open = !open" @click.away="open = false" :disabled="url.includes('spotify.com')" :class="url.includes('spotify.com') ? 'opacity-50 cursor-not-allowed bg-[#3f3f46]' : 'bg-[#005c99] hover:bg-[#005c99] text-white'" class="px-2 rounded-r-lg border-l border-black/20 transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                        <div x-show="open" x-transition class="absolute top-full right-0 mt-1 bg-[#24242b] border border-[#3f3f46] rounded-lg shadow-lg overflow-hidden z-10 w-24" style="display: none;">
+                            <button type="button" @click="videoFormat = 'mp4'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white">mp4</button>
+                            <button type="button" @click="videoFormat = 'mkv'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white">mkv</button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <!-- Stat Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-lg overflow-hidden flex flex-col">
+                <div class="bg-gradient-to-r from-[#d40060] to-[#9d0047] p-4 flex items-center justify-between">
+                    <div class="flex items-center gap-2 text-white">
+                        <h2 class="text-lg font-bold tracking-wider uppercase">Downloads</h2>
+                    </div>
+                    <div class="text-2xl font-light text-white"></div>
+                </div>
+                <div id="stat-cards" class="grid grid-cols-3 divide-x divide-[#3f3f46] bg-[#1e1e24] flex-1">
+                    <div class="p-4 flex flex-col items-center justify-center">
+                        <div class="text-xs text-[#a1a1aa] uppercase tracking-wider mb-1 font-semibold">Queued</div>
+                        <div class="text-2xl font-medium text-white">0</div>
+                    </div>
+                    <div class="p-4 flex flex-col items-center justify-center">
+                        <div class="text-xs text-[#a1a1aa] uppercase tracking-wider mb-1 font-semibold">Done</div>
+                        <div class="text-2xl font-medium text-emerald-500">0</div>
+                    </div>
+                    <div class="p-4 flex flex-col items-center justify-center">
+                        <div class="text-xs text-[#a1a1aa] uppercase tracking-wider mb-1 font-semibold">Errors</div>
+                        <div class="text-2xl font-medium text-red-500">0</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Table Area -->
+        <div class="bg-[#24242b] border border-[#3f3f46] rounded-lg shadow overflow-hidden" x-data="{ tab: 'all', search: '', showStatus: false, expandedPlaylists: {} }">
+            <div class="p-4 border-b border-[#3f3f46] flex flex-col md:flex-row justify-between items-center gap-4">
+                <div class="flex gap-2 bg-[#1e1e24] p-1 rounded-lg border border-[#3f3f46]">
+                    <button @click="tab = 'all'; search = ''" :class="{'bg-[#d40060] text-white': tab === 'all', 'text-[#a1a1aa] hover:text-white': tab !== 'all'}" class="px-4 py-1.5 rounded-md text-sm font-medium transition-colors">All Tracks</button>
+                </div>
+                <div class="flex items-center gap-4 w-full md:w-auto">
+                    <div class="relative w-full md:w-64">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#a1a1aa]">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                        </div>
+                        <input type="text" x-model="search" placeholder="Search tracks..." class="w-full bg-[#111115] border border-[#3f3f46] focus:border-[#d40060] rounded-lg pl-9 pr-4 py-2 text-white focus:outline-none transition-colors text-sm">
+                    </div>
+                </div>
+            </div>
+
+            <div id="track-list-container" hx-get="/api/tracks" hx-trigger="load, every 2s" class="overflow-x-auto min-h-[400px]">
+                <div class="p-8 text-center text-[#a1a1aa]">Loading tracks...</div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- FEATURE 2: SYNCED PLAYLISTS VIEW -->
+    <div x-show="activeFeature === 'synced-playlists'" x-cloak x-transition>
+        <!-- Synced Playlists Toolbar & Add Button -->
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h2 class="text-xl font-bold text-white">Synced Playlists</h2>
+                <p class="text-xs text-[#a1a1aa] mt-1">Playlists are automatically scanned and synced every 6 hours.</p>
+            </div>
+            <button @click="showAddModal = true" class="bg-[#d40060] hover:bg-[#a3004a] text-white font-bold py-2.5 px-5 rounded-lg transition-colors flex items-center gap-2 shadow-md">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                Add Synced Playlist
+            </button>
+        </div>
+
+        <!-- Synced Playlists Cards Grid Container -->
+        <div id="synced-playlists-container" hx-get="/api/synced-playlists" hx-trigger="load, every 5s" class="min-h-[300px]">
+            <div class="p-8 text-center text-[#a1a1aa]">Loading synced playlists...</div>
+        </div>
+    </div>
+
+
+    <!-- MODAL 1: ADD SYNCED PLAYLIST MODAL -->
+    <div x-show="showAddModal" x-cloak class="fixed inset-0 z-50 overflow-y-auto bg-black/70 flex items-center justify-center p-4">
+        <div @click.away="showAddModal = false" class="bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-2xl max-w-md w-full p-6 text-left">
+            <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                <svg class="w-5 h-5 text-[#d40060]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                Add Synced Playlist
+            </h3>
+            
+            <form hx-post="/api/synced-playlists" hx-target="#synced-playlists-container" hx-on::after-request="showAddModal = false; this.reset();" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-[#a1a1aa] uppercase mb-1">Playlist URL *</label>
+                    <input type="url" name="url" placeholder="https://open.spotify.com/playlist/... or YouTube/SoundCloud URL" required
+                        class="w-full bg-[#111115] border border-[#3f3f46] focus:border-[#d40060] rounded-lg px-3 py-2 text-white text-sm focus:outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-[#a1a1aa] uppercase mb-1">Custom Title (Optional)</label>
+                    <input type="text" name="title" placeholder="Auto-fetched from platform if empty"
+                        class="w-full bg-[#111115] border border-[#3f3f46] focus:border-[#d40060] rounded-lg px-3 py-2 text-white text-sm focus:outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-[#a1a1aa] uppercase mb-2">Sync Mode *</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <label class="bg-[#1e1e24] border border-[#3f3f46] p-3 rounded-lg cursor-pointer flex flex-col gap-1 hover:border-[#d40060]">
+                            <input type="radio" name="sync_mode" value="append_only" checked class="text-[#d40060] focus:ring-0">
+                            <span class="font-bold text-white text-xs">Append-Only</span>
+                            <span class="text-[10px] text-[#a1a1aa]">Keep all local files when tracks are removed upstream.</span>
+                        </label>
+                        <label class="bg-[#1e1e24] border border-[#3f3f46] p-3 rounded-lg cursor-pointer flex flex-col gap-1 hover:border-[#d40060]">
+                            <input type="radio" name="sync_mode" value="mirror" class="text-[#d40060] focus:ring-0">
+                            <span class="font-bold text-white text-xs">Mirror / Prune</span>
+                            <span class="text-[10px] text-[#a1a1aa]">Delete local files if removed from remote playlist.</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="pt-4 flex justify-end gap-3 border-t border-[#3f3f46]">
+                    <button type="button" @click="showAddModal = false" class="px-4 py-2 rounded-lg text-sm text-[#a1a1aa] hover:text-white bg-[#1e1e24] border border-[#3f3f46]">Cancel</button>
+                    <button type="submit" class="px-5 py-2 rounded-lg text-sm font-bold text-white bg-[#d40060] hover:bg-[#a3004a] shadow-md">Add & Start Sync</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- MODAL 2: EDIT SYNCED PLAYLIST MODAL -->
+    <div x-show="showEditModal" x-cloak class="fixed inset-0 z-50 overflow-y-auto bg-black/70 flex items-center justify-center p-4">
+        <div @click.away="showEditModal = false" class="bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-2xl max-w-md w-full p-6 text-left">
+            <h3 class="text-lg font-bold text-white mb-4">Edit Synced Playlist</h3>
+            
+            <form :hx-put="'/api/synced-playlists/' + editPlaylist.id" hx-target="#synced-playlists-container" hx-on::after-request="showEditModal = false;" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-[#a1a1aa] uppercase mb-1">Playlist Title</label>
+                    <input type="text" name="title" x-model="editPlaylist.title" required
+                        class="w-full bg-[#111115] border border-[#3f3f46] focus:border-[#d40060] rounded-lg px-3 py-2 text-white text-sm focus:outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-[#a1a1aa] uppercase mb-2">Sync Mode</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <label class="bg-[#1e1e24] border border-[#3f3f46] p-3 rounded-lg cursor-pointer flex flex-col gap-1">
+                            <input type="radio" name="sync_mode" value="append_only" :checked="editPlaylist.sync_mode === 'append_only'" class="text-[#d40060]">
+                            <span class="font-bold text-white text-xs">Append-Only</span>
+                        </label>
+                        <label class="bg-[#1e1e24] border border-[#3f3f46] p-3 rounded-lg cursor-pointer flex flex-col gap-1">
+                            <input type="radio" name="sync_mode" value="mirror" :checked="editPlaylist.sync_mode === 'mirror'" class="text-[#d40060]">
+                            <span class="font-bold text-white text-xs">Mirror / Prune</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="pt-4 flex justify-end gap-3 border-t border-[#3f3f46]">
+                    <button type="button" @click="showEditModal = false" class="px-4 py-2 rounded-lg text-sm text-[#a1a1aa] hover:text-white bg-[#1e1e24] border border-[#3f3f46]">Cancel</button>
+                    <button type="submit" class="px-5 py-2 rounded-lg text-sm font-bold text-white bg-[#d40060] hover:bg-[#a3004a] shadow-md">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- MODAL 3: DELETE CONFIRMATION MODAL -->
+    <div x-show="showDeleteModal" x-cloak class="fixed inset-0 z-50 overflow-y-auto bg-black/70 flex items-center justify-center p-4">
+        <div @click.away="showDeleteModal = false" class="bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-2xl max-w-md w-full p-6 text-left">
+            <h3 class="text-lg font-bold text-white mb-2 text-red-500 flex items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                Delete Synced Playlist
+            </h3>
+            <p class="text-xs text-[#a1a1aa] mb-4">Are you sure you want to stop tracking <strong class="text-white" x-text="deleteTarget.title"></strong>?</p>
+            
+            <form :hx-delete="'/api/synced-playlists/' + deleteTarget.id" hx-target="#synced-playlists-container" hx-on::after-request="showDeleteModal = false;" class="space-y-4">
+                <input type="hidden" name="delete_files" :value="deleteFiles">
+                
+                <div class="space-y-2 bg-[#1e1e24] p-3 rounded-lg border border-[#3f3f46]">
+                    <label class="flex items-center gap-2 text-xs text-white cursor-pointer">
+                        <input type="radio" name="delete_option" value="false" x-model="deleteFiles" class="text-[#d40060]">
+                        <span>Keep downloaded audio files on disk (tracking only)</span>
+                    </label>
+                    <label class="flex items-center gap-2 text-xs text-red-400 cursor-pointer">
+                        <input type="radio" name="delete_option" value="true" x-model="deleteFiles" class="text-red-500">
+                        <span>Delete tracking AND remove local files from disk</span>
+                    </label>
+                </div>
+
+                <div class="pt-4 flex justify-end gap-3 border-t border-[#3f3f46]">
+                    <button type="button" @click="showDeleteModal = false" class="px-4 py-2 rounded-lg text-sm text-[#a1a1aa] hover:text-white bg-[#1e1e24] border border-[#3f3f46]">Cancel</button>
+                    <button type="submit" class="px-5 py-2 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-700 shadow-md">Confirm Delete</button>
+                </div>
+            </form>
+        </div>
     </div>
 
 </div>
+
 {% endblock %}
