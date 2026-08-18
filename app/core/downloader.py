@@ -18,8 +18,15 @@ DOWNLOAD_DIR = Path(os.getenv("DOWNLOAD_DIR", "/downloads"))
 
 
 def check_exists(db: Session, track_id: str) -> bool:
-    """Checks if a track ID already exists in the database and is completed."""
-    dl = db.query(models.Download).filter(models.Download.track_id == track_id).first()
+    """Checks if a track ID (or legacy raw ID) already exists in the database and is completed."""
+    raw_id = track_id.split("_", 1)[-1] if "_" in track_id else track_id
+    dl = (
+        db.query(models.Download)
+        .filter(
+            (models.Download.track_id == track_id) | (models.Download.track_id == raw_id)
+        )
+        .first()
+    )
     return dl is not None and dl.status == "Completed"
 
 
@@ -500,18 +507,25 @@ def sync_playlist_job(synced_playlist_id: int, db: Session) -> dict:
                     ]
                 cmd = ["spotdl"] + auth_args + ["save", url, "--save-file", temp_file]
                 subprocess.run(
-                    cmd, check=True, capture_output=True, text=True, timeout=1200
+                    cmd, check=False, capture_output=True, text=True, timeout=1200
                 )
-                with open(temp_file, "r") as f:
-                    metadata = json.load(f)
-                for t in metadata:
-                    raw_id = t.get("song_id")
-                    if raw_id:
-                        remote_tracks.append((
-                            f"spotify_{raw_id}",
-                            t.get("name"),
-                            t.get("artist"),
-                        ))
+                if os.path.exists(temp_file):
+                    with open(temp_file, "r") as f:
+                        metadata = json.load(f)
+                    for t in metadata:
+                        raw_id = t.get("song_id")
+                        if raw_id:
+                            remote_tracks.append((
+                                f"spotify_{raw_id}",
+                                t.get("name"),
+                                t.get("artist"),
+                            ))
+                if not remote_tracks:
+                    has_credentials = bool(settings and settings.spotify_client_id and settings.spotify_client_secret)
+                    if not has_credentials:
+                        sp.last_error = "0 tracks found. Ensure playlist is Public in Spotify and Spotify Client ID/Secret are set in Settings."
+                    else:
+                        sp.last_error = "0 tracks found. Ensure playlist is set to Public in Spotify."
             finally:
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
