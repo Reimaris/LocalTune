@@ -18,7 +18,11 @@ DOWNLOAD_DIR = Path(os.getenv("DOWNLOAD_DIR", "/downloads"))
 
 
 def check_exists(db: Session, track_id: str) -> bool:
-    """Checks if a track ID (or legacy raw ID) already exists in the database and is completed."""
+    """
+    Checks if a track ID (or legacy raw ID) exists in the database AND its audio file exists on disk.
+    If marked 'Completed' in DB but the file is missing from disk, removes the stale DB record
+    so the track will be automatically re-downloaded.
+    """
     raw_id = track_id.split("_", 1)[-1] if "_" in track_id else track_id
     dl = (
         db.query(models.Download)
@@ -27,7 +31,21 @@ def check_exists(db: Session, track_id: str) -> bool:
         )
         .first()
     )
-    return dl is not None and dl.status == "Completed"
+    if not dl:
+        return False
+
+    if dl.status == "Completed":
+        if dl.file_path and os.path.exists(dl.file_path):
+            return True
+        else:
+            logger.info(
+                f"Track '{dl.title}' ({dl.track_id}) missing from disk ({dl.file_path}). Purging stale record for re-download."
+            )
+            db.delete(dl)
+            db.commit()
+            return False
+
+    return False
 
 
 def insert_download(

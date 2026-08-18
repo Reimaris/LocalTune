@@ -130,3 +130,34 @@ def test_delete_synced_playlist():
     )
     assert del_resp.status_code == 200
     assert "To Be Deleted" not in del_resp.text
+
+
+def test_check_exists_redownloads_if_file_deleted(tmp_path):
+    from app.core.downloader import check_exists, insert_download
+
+    db = TestingSessionLocal()
+    dummy_file = tmp_path / "test_song.opus"
+    dummy_file.write_text("audio content")
+
+    # Insert completed download with existing file
+    insert_download(
+        db=db,
+        track_id="ytdlp_12345",
+        title="Test Song",
+        artist="Test Artist",
+        file_path=str(dummy_file),
+        status="Completed",
+        job_id="job1",
+    )
+
+    # When file exists on disk, check_exists returns True
+    assert check_exists(db, "ytdlp_12345") is True
+
+    # Manually delete the file from disk
+    dummy_file.unlink()
+
+    # Now check_exists returns False and purges stale DB record for re-download
+    assert check_exists(db, "ytdlp_12345") is False
+    stale_dl = db.query(models.Download).filter_by(track_id="ytdlp_12345").first()
+    assert stale_dl is None
+    db.close()
