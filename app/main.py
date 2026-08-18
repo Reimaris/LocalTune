@@ -298,8 +298,11 @@ async def add_synced_playlist(
     db: Session = Depends(get_db),
 ):
     """Creates a new Synced Playlist and triggers initial background sync."""
+    title_fetched, is_single = fetch_playlist_title(url, db)
     if not title or not title.strip():
-        title = fetch_playlist_title(url, db)
+        title = title_fetched
+
+    single_note = "Single track link detected (not a full playlist)" if is_single else None
 
     # Check if URL already tracked
     existing = (
@@ -312,6 +315,8 @@ async def add_synced_playlist(
         existing.sync_mode = sync_mode
         existing.is_active = True
         existing.status = "Syncing"
+        if single_note:
+            existing.last_error = single_note
         db.commit()
         playlist_id = existing.id
     else:
@@ -321,6 +326,7 @@ async def add_synced_playlist(
             sync_mode=sync_mode,
             is_active=True,
             status="Syncing",
+            last_error=single_note,
         )
         db.add(new_sp)
         db.commit()

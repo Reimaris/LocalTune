@@ -323,6 +323,14 @@ def handle_ytdlp(
         if is_youtube:
             cmd_dl.extend(["--extractor-args", "youtube:player_client=android,web,ios"])
 
+        sanitized_playlist_title = (
+            yt_dlp_sanitize(main_title) if is_playlist else ""
+        )
+        if is_playlist and sanitized_playlist_title:
+            output_tmpl = f"/downloads/{sanitized_playlist_title}/%(title)s.%(ext)s"
+        else:
+            output_tmpl = "/downloads/%(title)s.%(ext)s"
+
         if media_type == "audio":
             cmd_dl.extend([
                 "-x",
@@ -334,7 +342,7 @@ def handle_ytdlp(
                 "-a",
                 batch_file,
                 "-o",
-                "/downloads/%(playlist_title|)s/%(title)s.%(ext)s",
+                output_tmpl,
             ])
         else:
             cmd_dl.extend([
@@ -346,7 +354,7 @@ def handle_ytdlp(
                 "-a",
                 batch_file,
                 "-o",
-                "/downloads/%(playlist_title|)s/%(title)s.%(ext)s",
+                output_tmpl,
             ])
 
         dl_res = subprocess.run(cmd_dl, capture_output=True, text=True)
@@ -395,8 +403,8 @@ def handle_ytdlp(
 handle_youtube = handle_ytdlp
 
 
-def fetch_playlist_title(url: str, db: Session = None) -> str:
-    """Fetches the official title of a playlist from Spotify or generic yt-dlp."""
+def fetch_playlist_title(url: str, db: Session = None) -> tuple[str, bool]:
+    """Fetches the title and single-track boolean for a URL."""
     if re.search(r"(spotify\.com)", url):
         temp_file = f"temp_title_{uuid.uuid4().hex}.spotdl"
         try:
@@ -419,23 +427,22 @@ def fetch_playlist_title(url: str, db: Session = None) -> str:
             with open(temp_file, "r") as f:
                 data = json.load(f)
             if data and isinstance(data, list):
-                return (
-                    data[0].get("list_name")
-                    or data[0].get("name")
-                    or "Synced Spotify Playlist"
-                )
+                title = data[0].get("list_name") or data[0].get("name") or "Synced Spotify Playlist"
+                is_single = len(data) <= 1
+                return title, is_single
         except Exception as e:
             logger.error(f"Failed to fetch Spotify playlist title: {e}")
         finally:
             if os.path.exists(temp_file):
                 os.remove(temp_file)
-        return "Synced Spotify Playlist"
+        return "Synced Spotify Playlist", False
     else:
         try:
-            cmd = ["yt-dlp", "-J", "--flat-playlist", url]
+            cmd = ["yt-dlp", "--yes-playlist", "-J", "--flat-playlist", url]
             if re.search(r"(youtube\.com|youtu\.be)", url):
                 cmd = [
                     "yt-dlp",
+                    "--yes-playlist",
                     "--extractor-args",
                     "youtube:player_client=android,web,ios",
                     "-J",
@@ -446,10 +453,13 @@ def fetch_playlist_title(url: str, db: Session = None) -> str:
                 cmd, check=True, capture_output=True, text=True, timeout=120
             )
             data = json.loads(result.stdout)
-            return data.get("title") or data.get("playlist_title") or "Synced Playlist"
+            title = data.get("title") or data.get("playlist_title") or "Synced Playlist"
+            entries = data.get("entries")
+            is_single = not entries or len(entries) <= 1
+            return title, is_single
         except Exception as e:
             logger.error(f"Failed to fetch yt-dlp playlist title: {e}")
-            return "Synced Playlist"
+            return "Synced Playlist", False
 
 
 def sync_playlist_job(synced_playlist_id: int, db: Session) -> dict:
