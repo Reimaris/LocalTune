@@ -161,3 +161,47 @@ def test_check_exists_redownloads_if_file_deleted(tmp_path):
     stale_dl = db.query(models.Download).filter_by(track_id="ytdlp_12345").first()
     assert stale_dl is None
     db.close()
+
+
+def test_delete_synced_playlist_removes_folder(tmp_path, monkeypatch):
+    import app.main as main_mod
+
+    monkeypatch.setattr(main_mod, "DOWNLOAD_DIR", tmp_path)
+
+    playlist_folder = tmp_path / "My Test Playlist"
+    playlist_folder.mkdir()
+    song_file = playlist_folder / "song.opus"
+    song_file.write_text("audio data")
+
+    client.post(
+        "/api/synced-playlists",
+        data={
+            "url": "https://soundcloud.com/artist/sets/test-playlist-folder-del",
+            "sync_mode": "append_only",
+            "title": "My Test Playlist",
+        },
+    )
+
+    db = TestingSessionLocal()
+    sp = db.query(models.SyncedPlaylist).filter_by(title="My Test Playlist").first()
+    assert sp is not None
+    sp_id = sp.id
+
+    from app.core.downloader import insert_download
+    insert_download(
+        db=db,
+        track_id="ytdlp_9999",
+        title="song",
+        artist="artist",
+        file_path=str(song_file),
+        status="Completed",
+        synced_playlist_id=sp_id,
+    )
+    db.close()
+
+    del_resp = client.request(
+        "DELETE",
+        f"/api/synced-playlists/{sp_id}?delete_files=true",
+    )
+    assert del_resp.status_code == 200
+    assert not playlist_folder.exists()

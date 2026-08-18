@@ -9,9 +9,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from pathlib import Path
 import uuid
+import shutil
 from app.core.logging_config import setup_logging, log_generator
 from app.worker import process_download, process_playlist_sync
-from app.core.downloader import fetch_playlist_title
+from app.core.downloader import fetch_playlist_title, yt_dlp_sanitize, DOWNLOAD_DIR
 from app.core.scheduler import periodic_sync_loop
 from app.db import models
 from app.db.database import engine, get_db
@@ -449,21 +450,43 @@ async def delete_synced_playlist(
     )
     if sp:
         if should_delete_files:
-            # Purge local files associated with this playlist
+            # Collect potential playlist folders to delete from disk
+            folders_to_clean = set()
+            if sp.title:
+                sanitized_title = yt_dlp_sanitize(sp.title)
+                playlist_dir = os.path.join(DOWNLOAD_DIR, sanitized_title)
+                if os.path.isdir(playlist_dir):
+                    folders_to_clean.add(playlist_dir)
+
             downloads = (
                 db.query(models.Download)
                 .filter(models.Download.synced_playlist_id == sp.id)
                 .all()
             )
             for dl in downloads:
-                if dl.file_path and os.path.exists(dl.file_path):
+                if dl.file_path:
+                    parent_dir = os.path.dirname(dl.file_path)
+                    if parent_dir and parent_dir != str(DOWNLOAD_DIR) and parent_dir.startswith(str(DOWNLOAD_DIR)):
+                        folders_to_clean.add(parent_dir)
+                    if os.path.exists(dl.file_path):
+                        try:
+                            os.remove(dl.file_path)
+                        except Exception as e:
+                            logger.error(
+                                f"Error deleting file {dl.file_path} on playlist purge: {e}"
+                            )
+                db.delete(dl)
+
+            # Purge playlist folders from disk
+            for folder in folders_to_clean:
+                if os.path.isdir(folder):
                     try:
-                        os.remove(dl.file_path)
+                        shutil.rmtree(folder)
+                        logger.info(f"Purged playlist folder from disk: {folder}")
                     except Exception as e:
                         logger.error(
-                            f"Error deleting file {dl.file_path} on playlist purge: {e}"
+                            f"Error deleting playlist folder {folder}: {e}"
                         )
-                db.delete(dl)
 
         db.delete(sp)
         db.commit()
