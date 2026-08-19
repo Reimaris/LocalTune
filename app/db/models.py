@@ -14,7 +14,9 @@ class Download(Base):
     status = Column(String, default="Completed")
     job_id = Column(String, index=True, nullable=True)
     job_title = Column(String, nullable=True)
-    synced_playlist_id = Column(Integer, ForeignKey("synced_playlists.id"), nullable=True)
+    synced_playlist_id = Column(
+        Integer, ForeignKey("synced_playlists.id"), nullable=True
+    )
     downloaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
@@ -40,4 +42,3 @@ class Settings(Base):
     telegram_chat_id = Column(String, nullable=True)
     spotify_client_id = Column(String, nullable=True)
     spotify_client_secret = Column(String, nullable=True)
-

@@ -27,7 +27,8 @@ def check_exists(db: Session, track_id: str) -> bool:
     dl = (
         db.query(models.Download)
         .filter(
-            (models.Download.track_id == track_id) | (models.Download.track_id == raw_id)
+            (models.Download.track_id == track_id)
+            | (models.Download.track_id == raw_id)
         )
         .first()
     )
@@ -55,9 +56,9 @@ def insert_download(
     artist: str,
     file_path: str,
     status: str = "Completed",
-    job_id: str = None,
-    job_title: str = None,
-    synced_playlist_id: int = None,
+    job_id: str | None = None,
+    job_title: str | None = None,
+    synced_playlist_id: int | None = None,
 ):
     """Inserts or updates a download record in the database."""
     dl = db.query(models.Download).filter(models.Download.track_id == track_id).first()
@@ -104,20 +105,20 @@ def handle_spotify(
     db: Session,
     job_id: str,
     file_format: str = "opus",
-    synced_playlist_id: int = None,
+    synced_playlist_id: int | None = None,
 ) -> str:
     """Handles Spotify downloads with spotdl, applying delta-sync."""
     temp_file = f"temp_{job_id}.spotdl"
 
     try:
         settings = db.query(models.Settings).first()
-        auth_args = []
+        auth_args: list[str] = []
         if settings and settings.spotify_client_id and settings.spotify_client_secret:
             auth_args = [
                 "--client-id",
-                settings.spotify_client_id.strip(),
+                str(settings.spotify_client_id).strip(),
                 "--client-secret",
-                settings.spotify_client_secret.strip(),
+                str(settings.spotify_client_secret).strip(),
             ]
 
         # Generate metadata
@@ -264,7 +265,7 @@ def handle_ytdlp(
     job_id: str,
     media_type: str = "audio",
     file_format: str = "opus",
-    synced_playlist_id: int = None,
+    synced_playlist_id: int | None = None,
 ) -> str:
     """Handles generic yt-dlp downloads for non-Spotify URLs (YouTube, SoundCloud, Bandcamp, etc.)."""
     batch_file = f"batch_{job_id}.txt"
@@ -273,7 +274,9 @@ def handle_ytdlp(
     try:
         cmd_meta = ["yt-dlp", "--yes-playlist", "--ignore-errors"]
         if is_youtube:
-            cmd_meta.extend(["--extractor-args", "youtube:player_client=android,web,ios"])
+            cmd_meta.extend(
+                ["--extractor-args", "youtube:player_client=android,web,ios"]
+            )
         cmd_meta.extend(["-J", "--flat-playlist", url])
 
         result = subprocess.run(
@@ -348,43 +351,49 @@ def handle_ytdlp(
         if is_youtube:
             cmd_dl.extend(["--extractor-args", "youtube:player_client=android,web,ios"])
 
-        sanitized_playlist_title = (
-            yt_dlp_sanitize(main_title) if is_playlist else ""
-        )
+        sanitized_playlist_title = yt_dlp_sanitize(main_title) if is_playlist else ""
         if is_playlist and sanitized_playlist_title:
             output_tmpl = f"/downloads/{sanitized_playlist_title}/%(title)s.%(ext)s"
         else:
             output_tmpl = "/downloads/%(title)s.%(ext)s"
 
         if media_type == "audio":
-            cmd_dl.extend([
-                "-x",
-                "--audio-format",
-                file_format,
-                "--audio-quality",
-                "0",
-                "--windows-filenames",
-                "-a",
-                batch_file,
-                "-o",
-                output_tmpl,
-            ])
+            cmd_dl.extend(
+                [
+                    "-x",
+                    "--audio-format",
+                    file_format,
+                    "--audio-quality",
+                    "0",
+                    "--windows-filenames",
+                    "-a",
+                    batch_file,
+                    "-o",
+                    output_tmpl,
+                ]
+            )
         else:
-            cmd_dl.extend([
-                "-f",
-                "bestvideo+bestaudio/best",
-                "--merge-output-format",
-                file_format,
-                "--windows-filenames",
-                "-a",
-                batch_file,
-                "-o",
-                output_tmpl,
-            ])
+            cmd_dl.extend(
+                [
+                    "-f",
+                    "bestvideo+bestaudio/best",
+                    "--merge-output-format",
+                    file_format,
+                    "--windows-filenames",
+                    "-a",
+                    batch_file,
+                    "-o",
+                    output_tmpl,
+                ]
+            )
 
         dl_res = subprocess.run(cmd_dl, capture_output=True, text=True)
         if dl_res.returncode not in (0, 1):
-            error_msg = dl_res.stderr.strip() if dl_res.stderr else f"yt-dlp exit code {dl_res.returncode}"
+            error_msg = (
+                dl_res.stderr.strip()
+                if dl_res.stderr
+                else f"yt-dlp exit code {dl_res.returncode}"
+            )
             raise RuntimeError(f"yt-dlp download failed: {error_msg[:200]}")
 
         # Mark as completed
@@ -428,12 +437,12 @@ def handle_ytdlp(
 handle_youtube = handle_ytdlp
 
 
-def fetch_playlist_title(url: str, db: Session = None) -> tuple[str, bool]:
+def fetch_playlist_title(url: str, db: Session | None = None) -> tuple[str, bool]:
     """Fetches the title and single-track boolean for a URL."""
     if re.search(r"(spotify\.com)", url):
         temp_file = f"temp_title_{uuid.uuid4().hex}.spotdl"
         try:
-            auth_args = []
+            auth_args: list[str] = []
             if db:
                 settings = db.query(models.Settings).first()
                 if (
@@ -443,16 +452,20 @@ def fetch_playlist_title(url: str, db: Session = None) -> tuple[str, bool]:
                 ):
                     auth_args = [
                         "--client-id",
-                        settings.spotify_client_id.strip(),
+                        str(settings.spotify_client_id).strip(),
                         "--client-secret",
-                        settings.spotify_client_secret.strip(),
+                        str(settings.spotify_client_secret).strip(),
                     ]
             cmd = ["spotdl"] + auth_args + ["save", url, "--save-file", temp_file]
             subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
             with open(temp_file, "r") as f:
                 data = json.load(f)
             if data and isinstance(data, list):
-                title = data[0].get("list_name") or data[0].get("name") or "Synced Spotify Playlist"
+                title = (
+                    data[0].get("list_name")
+                    or data[0].get("name")
+                    or "Synced Spotify Playlist"
+                )
                 is_single = len(data) <= 1
                 return title, is_single
         except Exception as e:
@@ -511,7 +524,7 @@ def sync_playlist_job(synced_playlist_id: int, db: Session) -> dict:
             temp_file = f"temp_sync_{job_id}.spotdl"
             try:
                 settings = db.query(models.Settings).first()
-                auth_args = []
+                auth_args: list[str] = []
                 if (
                     settings
                     and settings.spotify_client_id
@@ -519,9 +532,9 @@ def sync_playlist_job(synced_playlist_id: int, db: Session) -> dict:
                 ):
                     auth_args = [
                         "--client-id",
-                        settings.spotify_client_id.strip(),
+                        str(settings.spotify_client_id).strip(),
                         "--client-secret",
-                        settings.spotify_client_secret.strip(),
+                        str(settings.spotify_client_secret).strip(),
                     ]
                 cmd = ["spotdl"] + auth_args + ["save", url, "--save-file", temp_file]
                 subprocess.run(
@@ -533,13 +546,19 @@ def sync_playlist_job(synced_playlist_id: int, db: Session) -> dict:
                     for t in metadata:
                         raw_id = t.get("song_id")
                         if raw_id:
-                            remote_tracks.append((
-                                f"spotify_{raw_id}",
-                                t.get("name"),
-                                t.get("artist"),
-                            ))
+                            remote_tracks.append(
+                                (
+                                    f"spotify_{raw_id}",
+                                    t.get("name"),
+                                    t.get("artist"),
+                                )
+                            )
                 if not remote_tracks:
-                    has_credentials = bool(settings and settings.spotify_client_id and settings.spotify_client_secret)
+                    has_credentials = bool(
+                        settings
+                        and settings.spotify_client_id
+                        and settings.spotify_client_secret
+                    )
                     if not has_credentials:
                         sp.last_error = "0 tracks found. Ensure playlist is Public in Spotify and Spotify Client ID/Secret are set in Settings."
                     else:
@@ -551,24 +570,26 @@ def sync_playlist_job(synced_playlist_id: int, db: Session) -> dict:
             is_youtube = bool(re.search(r"(youtube\.com|youtu\.be)", url))
             cmd = ["yt-dlp", "--yes-playlist", "--ignore-errors"]
             if is_youtube:
-                cmd.extend(["--extractor-args", "youtube:player_client=android,web,ios"])
+                cmd.extend(
+                    ["--extractor-args", "youtube:player_client=android,web,ios"]
+                )
             cmd.extend(["-J", "--flat-playlist", url])
             result = subprocess.run(
                 cmd, check=True, capture_output=True, text=True, timeout=1200
             )
             data = json.loads(result.stdout)
-            extractor = (
-                data.get("extractor_key") or data.get("extractor") or "ytdlp"
-            )
+            extractor = data.get("extractor_key") or data.get("extractor") or "ytdlp"
             entries = data.get("entries") or [data]
             for t in entries:
                 raw_id = t.get("id")
                 if raw_id:
-                    remote_tracks.append((
-                        f"{extractor.lower()}_{raw_id}",
-                        t.get("title"),
-                        t.get("uploader") or t.get("artist"),
-                    ))
+                    remote_tracks.append(
+                        (
+                            f"{extractor.lower()}_{raw_id}",
+                            t.get("title"),
+                            t.get("uploader") or t.get("artist"),
+                        )
+                    )
 
         remote_track_ids = {t[0] for t in remote_tracks}
 
@@ -606,9 +627,7 @@ def sync_playlist_job(synced_playlist_id: int, db: Session) -> dict:
         sp.last_error = None
         db.commit()
 
-        logger.info(
-            f"Sync for playlist '{sp.title}' finished. Pruned: {pruned_count}."
-        )
+        logger.info(f"Sync for playlist '{sp.title}' finished. Pruned: {pruned_count}.")
         return {"status": "success", "title": title, "pruned": pruned_count}
 
     except Exception as e:

@@ -234,7 +234,9 @@ class ManagerApp(ctk.CTk):
 
             # Async container status update in background
             if not self.is_processing_cmd:
-                threading.Thread(target=self.detect_container_status, daemon=True).start()
+                threading.Thread(
+                    target=self.detect_container_status, daemon=True
+                ).start()
 
     def detect_container_status(self):
         """Asynchronously check if LocalTune Docker container is currently active."""
@@ -319,18 +321,24 @@ class ManagerApp(ctk.CTk):
             self.run_command(
                 ["docker", "compose", "down"],
                 success_msg="LocalTune container stopped.",
-                on_complete_callback=lambda: setattr(self, "is_running_container", False),
+                on_complete_callback=lambda: setattr(
+                    self, "is_running_container", False
+                ),
             )
         else:
             self.log("Starting LocalTune container...")
             self.run_command(
                 ["docker", "compose", "up", "-d"],
                 success_msg="LocalTune container started successfully!",
-                on_complete_callback=lambda: setattr(self, "is_running_container", True),
+                on_complete_callback=lambda: setattr(
+                    self, "is_running_container", True
+                ),
             )
 
     def open_dashboard(self):
-        port = os.environ.get("LOCALTUNE_PORT", "8000")
+        port = os.environ.get("LOCALTUNE_PORT", "").strip()
+        if not port or not port.isdigit():
+            port = "8000"
         url = f"http://127.0.0.1:{port}"
         self.log(f"Opening {url} in browser...")
         webbrowser.open(url)

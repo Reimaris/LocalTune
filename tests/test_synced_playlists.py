@@ -188,6 +188,7 @@ def test_delete_synced_playlist_removes_folder(tmp_path, monkeypatch):
     sp_id = sp.id
 
     from app.core.downloader import insert_download
+
     insert_download(
         db=db,
         track_id="ytdlp_9999",

@@ -33,7 +33,9 @@ except Exception:
 
 try:
     with engine.connect() as conn:
-        conn.execute(text("ALTER TABLE downloads ADD COLUMN synced_playlist_id INTEGER"))
+        conn.execute(
+            text("ALTER TABLE downloads ADD COLUMN synced_playlist_id INTEGER")
+        )
         conn.commit()
 except Exception:
     pass
@@ -194,26 +196,38 @@ async def api_tracks(request: Request, db: Session = Depends(get_db)):
     )
     queued = (
         db.query(models.Download)
-        .filter(models.Download.synced_playlist_id.is_(None), models.Download.status == "Queued")
+        .filter(
+            models.Download.synced_playlist_id.is_(None),
+            models.Download.status == "Queued",
+        )
         .count()
     )
     downloading = (
         db.query(models.Download)
-        .filter(models.Download.synced_playlist_id.is_(None), models.Download.status == "Downloading")
+        .filter(
+            models.Download.synced_playlist_id.is_(None),
+            models.Download.status == "Downloading",
+        )
         .count()
     )
     done = (
         db.query(models.Download)
-        .filter(models.Download.synced_playlist_id.is_(None), models.Download.status == "Completed")
+        .filter(
+            models.Download.synced_playlist_id.is_(None),
+            models.Download.status == "Completed",
+        )
         .count()
     )
     errors = (
         db.query(models.Download)
-        .filter(models.Download.synced_playlist_id.is_(None), models.Download.status == "Failed")
+        .filter(
+            models.Download.synced_playlist_id.is_(None),
+            models.Download.status == "Failed",
+        )
         .count()
     )
 
-    grouped_jobs = {}
+    grouped_jobs: dict[str, list] = {}
     for t in tracks:
         if t.job_id:
             if t.job_id not in grouped_jobs:
@@ -310,13 +324,13 @@ async def add_synced_playlist(
     if not title or not title.strip():
         title = title_fetched
 
-    single_note = "Single track link detected (not a full playlist)" if is_single else None
+    single_note = (
+        "Single track link detected (not a full playlist)" if is_single else None
+    )
 
     # Check if URL already tracked
     existing = (
-        db.query(models.SyncedPlaylist)
-        .filter(models.SyncedPlaylist.url == url)
-        .first()
+        db.query(models.SyncedPlaylist).filter(models.SyncedPlaylist.url == url).first()
     )
     if existing:
         existing.title = title
@@ -340,7 +354,7 @@ async def add_synced_playlist(
         db.commit()
         playlist_id = new_sp.id
 
-    background_tasks.add_task(process_playlist_sync, playlist_id)
+    background_tasks.add_task(process_playlist_sync, int(str(playlist_id)))
 
     synced_playlists = (
         db.query(models.SyncedPlaylist)
@@ -451,9 +465,14 @@ async def delete_synced_playlist(
         .filter(models.SyncedPlaylist.id == playlist_id)
         .first()
     )
-    should_delete_files = (
-        delete_files.lower() in ("true", "1", "yes")
-        or request.query_params.get("delete_files", "false").lower() in ("true", "1", "yes")
+    should_delete_files = delete_files.lower() in (
+        "true",
+        "1",
+        "yes",
+    ) or request.query_params.get("delete_files", "false").lower() in (
+        "true",
+        "1",
+        "yes",
     )
     if sp:
         if should_delete_files:
@@ -473,7 +492,11 @@ async def delete_synced_playlist(
             for dl in downloads:
                 if dl.file_path:
                     parent_dir = os.path.dirname(dl.file_path)
-                    if parent_dir and parent_dir != str(DOWNLOAD_DIR) and parent_dir.startswith(str(DOWNLOAD_DIR)):
+                    if (
+                        parent_dir
+                        and parent_dir != str(DOWNLOAD_DIR)
+                        and parent_dir.startswith(str(DOWNLOAD_DIR))
+                    ):
                         folders_to_clean.add(parent_dir)
                     if os.path.exists(dl.file_path):
                         try:
@@ -491,9 +514,7 @@ async def delete_synced_playlist(
                         shutil.rmtree(folder)
                         logger.info(f"Purged playlist folder from disk: {folder}")
                     except Exception as e:
-                        logger.error(
-                            f"Error deleting playlist folder {folder}: {e}"
-                        )
+                        logger.error(f"Error deleting playlist folder {folder}: {e}")
 
         db.delete(sp)
         db.commit()
