@@ -25,3 +25,4 @@
 - **Deletion Confirmation Modal**: The modal prompting users to choose between keeping or purging downloaded files when deleting a Synced Playlist card.
 - **On-Demand History Scope**: The strict scope filtering for the On-Demand Downloader history table, displaying strictly manual on-demand downloads (`synced_playlist_id IS NULL`) and suppressing Synced Playlist background sync jobs.
 - **Tab State Persistence**: The client-side mechanism using `localStorage` to retain the user's active view (`On-Demand Downloader View` vs `Synced Playlists View`) across browser refreshes (F5).
+- **Dashboard URL Override**: The convention in the Windows Manager to strictly use `127.0.0.1` to avoid IPv4/IPv6 loopback issues, with an interchangeable port defined via `LOCALTUNE_PORT` environment variable.

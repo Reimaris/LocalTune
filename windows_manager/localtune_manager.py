@@ -330,8 +330,10 @@ class ManagerApp(ctk.CTk):
             )
 
     def open_dashboard(self):
-        self.log("Opening http://localhost:8000 in browser...")
-        webbrowser.open("http://localhost:8000")
+        port = os.environ.get("LOCALTUNE_PORT", "8000")
+        url = f"http://127.0.0.1:{port}"
+        self.log(f"Opening {url} in browser...")
+        webbrowser.open(url)
 
     def open_folder(self, folder_path: str):
         project_dir = get_project_dir()
