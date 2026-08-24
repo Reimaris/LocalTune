@@ -96,6 +96,7 @@ async def download_url(
     url: str = Form(...),
     media_type: str = Form("audio"),
     file_format: str = Form("opus"),
+    resolution_cap: str = Form("best"),
     db: Session = Depends(get_db),
 ):
     """Receives URL from frontend, validates it, and queues for download."""
@@ -119,7 +120,9 @@ async def download_url(
         """
 
     job_id = uuid.uuid4().hex
-    background_tasks.add_task(process_download, job_id, url, media_type, file_format)
+    background_tasks.add_task(
+        process_download, job_id, url, media_type, file_format, resolution_cap
+    )
 
     try:
         new_download = models.Download(

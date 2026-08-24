@@ -33,6 +33,22 @@
                 Synced Playlists
             </button>
         </div>
+
+        <!-- Compact Header Stats Widget -->
+        <div id="stat-cards" class="flex items-center gap-1 bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-md px-2 py-1.5">
+            <div class="flex flex-col items-center px-3 py-1 border-r border-[#3f3f46]">
+                <div class="text-[10px] text-[#a1a1aa] uppercase tracking-wider font-semibold">Queued</div>
+                <div class="text-lg font-medium text-white leading-tight">0</div>
+            </div>
+            <div class="flex flex-col items-center px-3 py-1 border-r border-[#3f3f46]">
+                <div class="text-[10px] text-[#a1a1aa] uppercase tracking-wider font-semibold">Done</div>
+                <div class="text-lg font-medium text-emerald-500 leading-tight">0</div>
+            </div>
+            <div class="flex flex-col items-center px-3 py-1">
+                <div class="text-[10px] text-[#a1a1aa] uppercase tracking-wider font-semibold">Errors</div>
+                <div class="text-lg font-medium text-red-500 leading-tight">0</div>
+            </div>
+        </div>
     </div>
 
     <!-- FEATURE 1: ON-DEMAND DOWNLOADER VIEW -->
@@ -40,8 +56,9 @@
         <!-- Download Form Area -->
         <div class="bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-lg p-6 mb-8">
             <h2 class="text-lg font-bold text-white mb-4">Download Music or Video</h2>
-            <form hx-post="/download" hx-target="#global-alert" hx-swap="innerHTML" hx-on::after-request="this.reset(); url=''" class="flex flex-col lg:flex-row gap-4" x-data="{ url: '', audioFormat: 'opus', videoFormat: 'mkv', fileFormat: 'opus' }">
+            <form hx-post="/download" hx-target="#global-alert" hx-swap="innerHTML" hx-on::after-request="this.reset(); url=''" class="flex flex-col lg:flex-row gap-4" x-data="{ url: '', audioFormat: 'opus', videoFormat: 'mkv', fileFormat: 'opus', resolutionCap: 'best', openFormatMenu: false, openResMenu: false }">
                 <input type="hidden" name="file_format" :value="fileFormat">
+                <input type="hidden" name="resolution_cap" :value="resolutionCap">
                 
                 <div class="flex-1 relative">
                     <input type="url" name="url" x-model="url" placeholder="Paste Spotify, YouTube, SoundCloud, or Bandcamp URL..." required autocomplete="off"
@@ -65,48 +82,51 @@
                         </div>
                     </div>
 
-                    <!-- Video Button -->
-                    <div class="relative flex" x-data="{ open: false }">
-                        <button type="submit" name="media_type" value="video" @click="fileFormat = videoFormat" :disabled="url.includes('spotify.com')" :class="url.includes('spotify.com') ? 'opacity-50 cursor-not-allowed bg-[#3f3f46]' : 'bg-[#007acc] hover:bg-[#005c99] text-white'" class="font-bold py-3 px-4 sm:px-6 rounded-l-lg transition-colors shadow-md whitespace-nowrap flex items-center gap-2">
+                    <!-- Video Button Group: Format Selector + Resolution Cap Selector -->
+                    <div class="flex items-stretch" :class="url.includes('spotify.com') ? 'opacity-50 pointer-events-none' : ''">
+
+                        <!-- Primary Video Submit Button -->
+                        <button type="submit" name="media_type" value="video"
+                            @click="fileFormat = videoFormat"
+                            :disabled="url.includes('spotify.com')"
+                            class="bg-[#007acc] hover:bg-[#005c99] text-white font-bold py-3 px-4 sm:px-5 transition-colors shadow-md whitespace-nowrap flex items-center gap-2 rounded-l-lg">
                             <svg class="w-5 h-5 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                            Video (<span x-text="videoFormat"></span>)
+                            Video
                         </button>
-                        <button type="button" @click="open = !open" @click.away="open = false" :disabled="url.includes('spotify.com')" :class="url.includes('spotify.com') ? 'opacity-50 cursor-not-allowed bg-[#3f3f46]' : 'bg-[#005c99] hover:bg-[#005c99] text-white'" class="px-2 rounded-r-lg border-l border-black/20 transition-colors">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                        </button>
-                        <div x-show="open" x-transition class="absolute top-full right-0 mt-1 bg-[#24242b] border border-[#3f3f46] rounded-lg shadow-lg overflow-hidden z-10 w-24" style="display: none;">
-                            <button type="button" @click="videoFormat = 'mp4'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white">mp4</button>
-                            <button type="button" @click="videoFormat = 'mkv'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white">mkv</button>
+
+                        <!-- Container Format Dropdown (mkv / mp4) -->
+                        <div class="relative flex" x-data="{ open: false }">
+                            <button type="button"
+                                @click="open = !open" @click.away="open = false"
+                                class="bg-[#005c99] hover:bg-[#004d80] text-white px-3 py-3 border-l border-[#007acc]/50 flex items-center gap-1 text-sm font-medium transition-colors whitespace-nowrap">
+                                <span x-text="videoFormat"></span>
+                                <svg class="w-3 h-3 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                            </button>
+                            <div x-show="open" x-transition class="absolute top-full left-0 mt-1 bg-[#24242b] border border-[#3f3f46] rounded-lg shadow-lg overflow-hidden z-10 w-20" style="display: none;">
+                                <button type="button" @click="videoFormat = 'mkv'; fileFormat = 'mkv'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm">mkv</button>
+                                <button type="button" @click="videoFormat = 'mp4'; fileFormat = 'mp4'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm">mp4</button>
+                            </div>
+                        </div>
+
+                        <!-- Resolution Cap Dropdown -->
+                        <div class="relative flex" x-data="{ open: false }">
+                            <button type="button"
+                                @click="open = !open" @click.away="open = false"
+                                class="bg-[#004d80] hover:bg-[#003d66] text-white px-3 py-3 border-l border-[#007acc]/30 rounded-r-lg flex items-center gap-1 text-sm font-medium transition-colors whitespace-nowrap">
+                                <span x-text="resolutionCap === 'best' ? 'Best' : resolutionCap + 'p'"></span>
+                                <svg class="w-3 h-3 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                            </button>
+                            <div x-show="open" x-transition class="absolute top-full right-0 mt-1 bg-[#24242b] border border-[#3f3f46] rounded-lg shadow-lg overflow-hidden z-10 w-36" style="display: none;">
+                                <button type="button" @click="resolutionCap = 'best'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm" :class="resolutionCap === 'best' ? 'text-[#38bdf8]' : ''">Best (Max)</button>
+                                <button type="button" @click="resolutionCap = '2160'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm" :class="resolutionCap === '2160' ? 'text-[#38bdf8]' : ''">2160p (4K)</button>
+                                <button type="button" @click="resolutionCap = '1440'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm" :class="resolutionCap === '1440' ? 'text-[#38bdf8]' : ''">1440p (2K)</button>
+                                <button type="button" @click="resolutionCap = '1080'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm" :class="resolutionCap === '1080' ? 'text-[#38bdf8]' : ''">1080p (FHD)</button>
+                                <button type="button" @click="resolutionCap = '720'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm" :class="resolutionCap === '720' ? 'text-[#38bdf8]' : ''">720p (HD)</button>
+                            </div>
                         </div>
                     </div>
                 </div>
             </form>
-        </div>
-
-        <!-- Stat Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div class="bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-lg overflow-hidden flex flex-col">
-                <div class="bg-gradient-to-r from-[#d40060] to-[#9d0047] p-4 flex items-center justify-between">
-                    <div class="flex items-center gap-2 text-white">
-                        <h2 class="text-lg font-bold tracking-wider uppercase">Downloads</h2>
-                    </div>
-                    <div class="text-2xl font-light text-white"></div>
-                </div>
-                <div id="stat-cards" class="grid grid-cols-3 divide-x divide-[#3f3f46] bg-[#1e1e24] flex-1">
-                    <div class="p-4 flex flex-col items-center justify-center">
-                        <div class="text-xs text-[#a1a1aa] uppercase tracking-wider mb-1 font-semibold">Queued</div>
-                        <div class="text-2xl font-medium text-white">0</div>
-                    </div>
-                    <div class="p-4 flex flex-col items-center justify-center">
-                        <div class="text-xs text-[#a1a1aa] uppercase tracking-wider mb-1 font-semibold">Done</div>
-                        <div class="text-2xl font-medium text-emerald-500">0</div>
-                    </div>
-                    <div class="p-4 flex flex-col items-center justify-center">
-                        <div class="text-xs text-[#a1a1aa] uppercase tracking-wider mb-1 font-semibold">Errors</div>
-                        <div class="text-2xl font-medium text-red-500">0</div>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <!-- Main Table Area -->

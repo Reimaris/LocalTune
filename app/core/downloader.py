@@ -266,6 +266,7 @@ def handle_ytdlp(
     media_type: str = "audio",
     file_format: str = "opus",
     synced_playlist_id: int | None = None,
+    resolution_cap: str = "best",
 ) -> str:
     """Handles generic yt-dlp downloads for non-Spotify URLs (YouTube, SoundCloud, Bandcamp, etc.)."""
     batch_file = f"batch_{job_id}.txt"
@@ -348,7 +349,9 @@ def handle_ytdlp(
 
         # Download remaining tracks
         cmd_dl = ["yt-dlp", "--yes-playlist", "--ignore-errors"]
-        if is_youtube:
+        # For audio, use extractor overrides (improves stream availability for audio-only);
+        # for video, do NOT restrict player clients so DASH high-res streams (1080p+) are accessible.
+        if media_type == "audio" and is_youtube:
             cmd_dl.extend(["--extractor-args", "youtube:player_client=android,web,ios"])
 
         sanitized_playlist_title = yt_dlp_sanitize(main_title) if is_playlist else ""
@@ -373,10 +376,17 @@ def handle_ytdlp(
                 ]
             )
         else:
+            # Build resolution-capped format string for video
+            cap = resolution_cap.strip() if resolution_cap else "best"
+            if cap and cap != "best":
+                fmt = f"bestvideo[height<=?{cap}]+bestaudio/best[height<=?{cap}]/best"
+            else:
+                fmt = "bestvideo+bestaudio/best"
+
             cmd_dl.extend(
                 [
                     "-f",
-                    "bestvideo+bestaudio/best",
+                    fmt,
                     "--merge-output-format",
                     file_format,
                     "--windows-filenames",

@@ -24,5 +24,8 @@
 - **Synced Playlist Card**: The UI component displaying playlist metadata, platform badge, sync status (`Active`, `Paused`, `Syncing`, `Failed`), and actions (`Sync-Now`, `Pause/Resume`, `Edit`, `Delete`).
 - **Deletion Confirmation Modal**: The modal prompting users to choose between keeping or purging downloaded files when deleting a Synced Playlist card.
 - **On-Demand History Scope**: The strict scope filtering for the On-Demand Downloader history table, displaying strictly manual on-demand downloads (`synced_playlist_id IS NULL`) and suppressing Synced Playlist background sync jobs.
-- **Tab State Persistence**: The client-side mechanism using `localStorage` to retain the user's active view (`On-Demand Downloader View` vs `Synced Playlists View`) across browser refreshes (F5).
 - **Dashboard URL Override**: The convention in the Windows Manager to strictly use `127.0.0.1` to avoid IPv4/IPv6 loopback issues, with an interchangeable port defined via `LOCALTUNE_PORT` environment variable.
+- **Resolution Cap**: The user-selected maximum video resolution ceiling applied to video downloads (`Best (Max)`, `2160p (4K)`, `1440p (2K)`, `1080p (FHD)`, `720p (HD)`).
+- **Video Format & Resolution Selector Group**: The split button/dropdown UI control on the On-Demand Downloader form providing independent dropdown selectors for container format (`mp4`, `mkv`) and resolution cap (`best`, `2160`, `1440`, `1080`, `720`).
+- **Compact Header Stats Widget**: The real-time metric component displaying Queued, Done, and Errors counters, relocated to the top header row adjacent to the Feature Switcher.
+- **Uncapped YouTube Stream Extraction**: The removal of restrictive player client extractor overrides for video downloads to enable extraction of full high-resolution (1080p, 1440p, 4K) DASH streams.

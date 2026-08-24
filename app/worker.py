@@ -1,15 +1,20 @@
-import re
 import logging
-from app.db.database import SessionLocal
-from app.db import models
+import re
+
 from app.core.downloader import handle_spotify, handle_ytdlp, sync_playlist_job
 from app.core.notifications import send_telegram_notification
+from app.db import models
+from app.db.database import SessionLocal
 
 logger = logging.getLogger(__name__)
 
 
 def process_download(
-    job_id: str, url: str, media_type: str = "audio", file_format: str = "opus"
+    job_id: str,
+    url: str,
+    media_type: str = "audio",
+    file_format: str = "opus",
+    resolution_cap: str = "best",
 ):
     """
     Background task to process downloads, apply delta-sync, and notify.
@@ -23,7 +28,9 @@ def process_download(
             title = handle_spotify(url, db, job_id, file_format)
         else:
             logger.info("Routing to generic yt-dlp fallback handler...")
-            title = handle_ytdlp(url, db, job_id, media_type, file_format)
+            title = handle_ytdlp(
+                url, db, job_id, media_type, file_format, resolution_cap=resolution_cap
+            )
 
         # Remove the placeholder row now that real tracks are registered
         placeholder = (

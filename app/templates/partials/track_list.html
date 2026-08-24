@@ -1,15 +1,15 @@
-<div id="stat-cards" hx-swap-oob="true" class="grid grid-cols-3 divide-x divide-[#3f3f46] bg-[#1e1e24] flex-1">
-    <div class="p-4 flex flex-col items-center justify-center">
-        <div class="text-xs text-[#a1a1aa] uppercase tracking-wider mb-1 font-semibold">Queued</div>
-        <div class="text-2xl font-medium text-white">{{ queued }}</div>
+<div id="stat-cards" hx-swap-oob="true" class="flex items-center gap-1 bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-md px-2 py-1.5">
+    <div class="flex flex-col items-center px-3 py-1 border-r border-[#3f3f46]">
+        <div class="text-[10px] text-[#a1a1aa] uppercase tracking-wider font-semibold">Queued</div>
+        <div class="text-lg font-medium text-white leading-tight">{{ queued }}</div>
     </div>
-    <div class="p-4 flex flex-col items-center justify-center">
-        <div class="text-xs text-[#a1a1aa] uppercase tracking-wider mb-1 font-semibold">Done</div>
-        <div class="text-2xl font-medium text-emerald-500">{{ done }}</div>
+    <div class="flex flex-col items-center px-3 py-1 border-r border-[#3f3f46]">
+        <div class="text-[10px] text-[#a1a1aa] uppercase tracking-wider font-semibold">Done</div>
+        <div class="text-lg font-medium text-emerald-500 leading-tight">{{ done }}</div>
     </div>
-    <div class="p-4 flex flex-col items-center justify-center">
-        <div class="text-xs text-[#a1a1aa] uppercase tracking-wider mb-1 font-semibold">Errors</div>
-        <div class="text-2xl font-medium text-red-500">{{ errors }}</div>
+    <div class="flex flex-col items-center px-3 py-1">
+        <div class="text-[10px] text-[#a1a1aa] uppercase tracking-wider font-semibold">Errors</div>
+        <div class="text-lg font-medium text-red-500 leading-tight">{{ errors }}</div>
     </div>
 </div>
 
