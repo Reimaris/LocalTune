@@ -5,7 +5,7 @@ from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
 # Create a global queue for log events
-log_queue = asyncio.Queue()
+log_queue: asyncio.Queue[str] = asyncio.Queue()
 
 
 class AsyncQueueHandler(logging.Handler):

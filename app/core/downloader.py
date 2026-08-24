@@ -56,7 +56,7 @@ def insert_download(
     track_id: str,
     title: str,
     artist: str,
-    file_path: str,
+    file_path: str | None = None,
     status: str = "Completed",
     job_id: str | None = None,
     job_title: str | None = None,

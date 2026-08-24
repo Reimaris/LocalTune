@@ -102,7 +102,7 @@ async def download_url(
     """Receives URL from frontend, validates it, and queues for download."""
     logger.info(f"Received download request for URL: {url}")
 
-    if not url or not (url.startswith("http://") or url.startswith("https://")):
+    if not url or not url.startswith(("http://", "https://")):
         return """
         <div class="bg-red-900 border border-red-700 text-white px-4 py-3 rounded relative mb-4" role="alert">
           <strong class="font-bold">Error!</strong>
