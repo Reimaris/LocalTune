@@ -66,19 +66,29 @@
                 </div>
                 
                 <div class="flex gap-2 flex-wrap">
-                    <!-- Music Button -->
-                    <div class="relative flex" x-data="{ open: false }">
-                        <button type="submit" name="media_type" value="audio" @click="fileFormat = audioFormat" class="bg-[#d40060] hover:bg-[#a3004a] text-white font-bold py-3 px-4 sm:px-6 rounded-l-lg transition-colors shadow-md shadow-pink-900/20 whitespace-nowrap flex items-center gap-2">
+                    <!-- Music Button Group -->
+                    <div class="flex items-stretch">
+                        <!-- Primary Music Submit Button -->
+                        <button type="submit" name="media_type" value="audio"
+                            @click="fileFormat = audioFormat"
+                            class="bg-[#d40060] hover:bg-[#a3004a] text-white font-bold py-3 px-4 sm:px-5 transition-colors shadow-md whitespace-nowrap flex items-center gap-2 rounded-l-lg">
                             <svg class="w-5 h-5 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
-                            Music (<span x-text="audioFormat"></span>)
+                            Music
                         </button>
-                        <button type="button" @click="open = !open" @click.away="open = false" class="bg-[#b30052] hover:bg-[#a3004a] text-white px-2 rounded-r-lg border-l border-[#d40060] transition-colors">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                        </button>
-                        <div x-show="open" x-transition class="absolute top-full right-0 mt-1 bg-[#24242b] border border-[#3f3f46] rounded-lg shadow-lg overflow-hidden z-10 w-24" style="display: none;">
-                            <button type="button" @click="audioFormat = 'mp3'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white">mp3</button>
-                            <button type="button" @click="audioFormat = 'opus'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white">opus</button>
-                            <button type="button" @click="audioFormat = 'flac'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white">flac</button>
+
+                        <!-- Audio Format Dropdown -->
+                        <div class="relative flex" x-data="{ open: false }">
+                            <button type="button"
+                                @click="open = !open" @click.away="open = false"
+                                class="bg-[#b30052] hover:bg-[#8a003f] text-white px-3 py-3 border-l border-[#d40060]/50 rounded-r-lg flex items-center gap-1 text-sm font-medium transition-colors whitespace-nowrap">
+                                <span x-text="audioFormat"></span>
+                                <svg class="w-3 h-3 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                            </button>
+                            <div x-show="open" x-transition class="absolute top-full left-0 mt-1 bg-[#24242b] border border-[#3f3f46] rounded-lg shadow-lg overflow-hidden z-10 w-20" style="display: none;">
+                                <button type="button" @click="audioFormat = 'mp3'; fileFormat = 'mp3'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm">mp3</button>
+                                <button type="button" @click="audioFormat = 'opus'; fileFormat = 'opus'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm">opus</button>
+                                <button type="button" @click="audioFormat = 'flac'; fileFormat = 'flac'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm">flac</button>
+                            </div>
                         </div>
                     </div>
 
