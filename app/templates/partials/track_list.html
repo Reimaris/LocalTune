@@ -1,13 +1,13 @@
-<div id="stat-cards" hx-swap-oob="true" class="flex items-center gap-1 bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-md px-2 py-1.5">
-    <div class="flex flex-col items-center px-3 py-1 border-r border-[#3f3f46]">
+<div id="stat-cards" hx-swap-oob="true" class="flex items-center bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-md py-1.5 px-1">
+    <div class="flex flex-col items-center justify-center w-[72px] py-1 border-r border-[#3f3f46]">
         <div class="text-[10px] text-[#a1a1aa] uppercase tracking-wider font-semibold">Queued</div>
         <div class="text-lg font-medium text-white leading-tight">{{ queued }}</div>
     </div>
-    <div class="flex flex-col items-center px-3 py-1 border-r border-[#3f3f46]">
+    <div class="flex flex-col items-center justify-center w-[72px] py-1 border-r border-[#3f3f46]">
         <div class="text-[10px] text-[#a1a1aa] uppercase tracking-wider font-semibold">Done</div>
         <div class="text-lg font-medium text-emerald-500 leading-tight">{{ done }}</div>
     </div>
-    <div class="flex flex-col items-center px-3 py-1">
+    <div class="flex flex-col items-center justify-center w-[72px] py-1">
         <div class="text-[10px] text-[#a1a1aa] uppercase tracking-wider font-semibold">Errors</div>
         <div class="text-lg font-medium text-red-500 leading-tight">{{ errors }}</div>
     </div>
