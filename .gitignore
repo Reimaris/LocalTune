@@ -27,10 +27,10 @@ downloads/
 *.spotdl
 batch_*.txt
 
-# Agent Context (Local only)
+# Agent Context & Local Files (Local only)
 AGENT_INSTRUCTIONS.md
 docs/agent_memory/
-
-# Ignore executables and random root databases
-*.exe
-*.db
+context.md
+tests/
+test_config/
+compose.test.yaml
