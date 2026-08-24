@@ -4,9 +4,13 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     zip \
+    unzip \
+    curl \
     gcc \
     nodejs \
-    && rm -rf /var/lib/apt/lists/*
+    && curl -fsSL https://deno.land/install.sh | sh \
+    && cp /root/.deno/bin/deno /usr/local/bin/ \
+    && rm -rf /var/lib/apt/lists/* /root/.deno
 
 # Create a non-root user
 RUN useradd -m -U appuser

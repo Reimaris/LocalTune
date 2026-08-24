@@ -1,16 +1,18 @@
-import subprocess
 import json
-import os
-import uuid
 import logging
+import os
 import re
-from pathlib import Path
+import subprocess
+import uuid
 from datetime import datetime, timezone
+from pathlib import Path
+
 from spotdl.utils.formatter import sanitize_string as spotdl_sanitize
-from yt_dlp.utils import sanitize_filename as yt_dlp_sanitize
 from sqlalchemy.orm import Session
-from app.db import models
+from yt_dlp.utils import sanitize_filename as yt_dlp_sanitize
+
 from app.core.notifications import send_telegram_notification
+from app.db import models
 
 logger = logging.getLogger(__name__)
 
@@ -275,9 +277,14 @@ def handle_ytdlp(
     try:
         cmd_meta = ["yt-dlp", "--yes-playlist", "--ignore-errors"]
         if is_youtube:
-            cmd_meta.extend(
-                ["--extractor-args", "youtube:player_client=android,web,ios"]
-            )
+            if media_type == "video":
+                cmd_meta.extend(
+                    ["--extractor-args", "youtube:player_client=web_embedded,android"]
+                )
+            else:
+                cmd_meta.extend(
+                    ["--extractor-args", "youtube:player_client=android,web,ios"]
+                )
         cmd_meta.extend(["-J", "--flat-playlist", url])
 
         result = subprocess.run(
@@ -349,10 +356,15 @@ def handle_ytdlp(
 
         # Download remaining tracks
         cmd_dl = ["yt-dlp", "--yes-playlist", "--ignore-errors"]
-        # For audio, use extractor overrides (improves stream availability for audio-only);
-        # for video, do NOT restrict player clients so DASH high-res streams (1080p+) are accessible.
-        if media_type == "audio" and is_youtube:
-            cmd_dl.extend(["--extractor-args", "youtube:player_client=android,web,ios"])
+        if is_youtube:
+            if media_type == "video":
+                cmd_dl.extend(
+                    ["--extractor-args", "youtube:player_client=web_embedded,android"]
+                )
+            else:
+                cmd_dl.extend(
+                    ["--extractor-args", "youtube:player_client=android,web,ios"]
+                )
 
         sanitized_playlist_title = yt_dlp_sanitize(main_title) if is_playlist else ""
         if is_playlist and sanitized_playlist_title:
@@ -406,7 +418,8 @@ def handle_ytdlp(
             )
             raise RuntimeError(f"yt-dlp download failed: {error_msg[:200]}")
 
-        # Mark as completed
+        # Mark as completed or failed after verifying file existence on disk
+        failed_count = 0
         for track, track_id in to_download:
             title = track.get("title", "Unknown Title")
             artist = track.get("uploader") or track.get("artist") or "Unknown Artist"
@@ -421,17 +434,53 @@ def handle_ytdlp(
                 if is_playlist
                 else f"/downloads/{sanitized_title}.{file_format}"
             )
-            insert_download(
-                db,
-                track_id,
-                title,
-                artist,
-                file_path,
-                "Completed",
-                job_id,
-                job_title_to_save,
-                synced_playlist_id,
-            )
+
+            if not os.path.exists(file_path):
+                # Fallback matching in target folder in case yt-dlp sanitized special characters slightly differently
+                target_dir = os.path.dirname(file_path)
+                matching_files = [
+                    os.path.join(target_dir, f)
+                    for f in (
+                        os.listdir(target_dir) if os.path.exists(target_dir) else []
+                    )
+                    if f.endswith(f".{file_format}")
+                    and sanitized_title[:20].lower() in f.lower()
+                ]
+                if matching_files:
+                    file_path = matching_files[0]
+
+            if os.path.exists(file_path):
+                insert_download(
+                    db,
+                    track_id,
+                    title,
+                    artist,
+                    file_path,
+                    "Completed",
+                    job_id,
+                    job_title_to_save,
+                    synced_playlist_id,
+                )
+            else:
+                failed_count += 1
+                logger.error(
+                    f"Download output file not found: {file_path}. yt-dlp stderr: {dl_res.stderr}"
+                )
+                insert_download(
+                    db,
+                    track_id,
+                    title,
+                    artist,
+                    None,
+                    "Failed",
+                    job_id,
+                    job_title_to_save,
+                    synced_playlist_id,
+                )
+
+        if failed_count == len(to_download):
+            error_details = dl_res.stderr.strip() or "Downloaded file not found on disk"
+            raise RuntimeError(f"yt-dlp download failed: {error_details[:200]}")
 
         # Fix permissions on /downloads
         fix_permissions(DOWNLOAD_DIR)
