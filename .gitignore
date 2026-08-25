@@ -34,3 +34,5 @@ context.md
 tests/
 test_config/
 compose.test.yaml
+
+.scratch/
