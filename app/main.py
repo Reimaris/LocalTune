@@ -7,6 +7,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 from pathlib import Path
 import uuid
 import shutil
@@ -25,11 +26,12 @@ logger.info("Starting LocalTune application")
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
 
+
 try:
     with engine.connect() as conn:
         conn.execute(text("ALTER TABLE downloads ADD COLUMN job_title VARCHAR"))
         conn.commit()
-except OSError:
+except OperationalError:
     pass
 
 try:
@@ -38,7 +40,7 @@ try:
             text("ALTER TABLE downloads ADD COLUMN synced_playlist_id INTEGER")
         )
         conn.commit()
-except OSError:
+except OperationalError:
     pass
 
 app = FastAPI(title="LocalTune")
