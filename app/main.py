@@ -435,14 +435,27 @@ async def soft_delete_job(request: Request, job_id: str, db: Session = Depends(g
     if any(t.status in ("Queued", "Downloading") for t in tracks):
         return await _render_tracks(request, db)
 
+    folders_to_clean = set()
     for track in tracks:
-        if track.file_path and os.path.exists(track.file_path):
-            try:
-                os.remove(track.file_path)
-            except OSError as e:
-                logger.error(f"Could not delete file {track.file_path}: {e}")
+        if track.file_path:
+            parent_dir = os.path.dirname(track.file_path)
+            if parent_dir != str(DOWNLOAD_DIR) and parent_dir.startswith(str(DOWNLOAD_DIR)):
+                folders_to_clean.add(parent_dir)
+            if os.path.exists(track.file_path):
+                try:
+                    os.remove(track.file_path)
+                except OSError as e:
+                    logger.error(f"Could not delete file {track.file_path}: {e}")
         track.status = "Deleted"
         track.file_path = None
+
+    for folder in folders_to_clean:
+        if os.path.isdir(folder):
+            try:
+                shutil.rmtree(folder)
+                logger.info(f"Purged playlist folder from disk: {folder}")
+            except OSError as e:
+                logger.error(f"Error deleting playlist folder {folder}: {e}")
 
     db.commit()
     logger.info(f"Job {job_id} soft-deleted by user — {len(tracks)} tracks affected.")
@@ -462,15 +475,28 @@ async def delete_job(request: Request, job_id: str, db: Session = Depends(get_db
         .all()
     )
 
+    folders_to_clean = set()
     count = 0
     for track in tracks:
-        if track.file_path and os.path.exists(track.file_path):
-            try:
-                os.remove(track.file_path)
-            except OSError as e:
-                logger.error(f"Could not delete file {track.file_path}: {e}")
+        if track.file_path:
+            parent_dir = os.path.dirname(track.file_path)
+            if parent_dir != str(DOWNLOAD_DIR) and parent_dir.startswith(str(DOWNLOAD_DIR)):
+                folders_to_clean.add(parent_dir)
+            if os.path.exists(track.file_path):
+                try:
+                    os.remove(track.file_path)
+                except OSError as e:
+                    logger.error(f"Could not delete file {track.file_path}: {e}")
         db.delete(track)
         count += 1
+
+    for folder in folders_to_clean:
+        if os.path.isdir(folder):
+            try:
+                shutil.rmtree(folder)
+                logger.info(f"Purged playlist folder from disk: {folder}")
+            except OSError as e:
+                logger.error(f"Error deleting playlist folder {folder}: {e}")
 
     if count > 0:
         db.commit()
