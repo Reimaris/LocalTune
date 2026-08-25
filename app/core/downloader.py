@@ -49,6 +49,10 @@ def check_exists(db: Session, track_id: str) -> bool:
             db.commit()
             return False
 
+    if dl.status == "Deleted":
+        logger.info(f"Track '{dl.title}' ({dl.track_id}) is marked as Deleted. Allowing re-download.")
+        return False
+
     return False
 
 

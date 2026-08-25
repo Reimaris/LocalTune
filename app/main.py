@@ -29,7 +29,7 @@ try:
     with engine.connect() as conn:
         conn.execute(text("ALTER TABLE downloads ADD COLUMN job_title VARCHAR"))
         conn.commit()
-except Exception:
+except OSError:
     pass
 
 try:
@@ -38,7 +38,7 @@ try:
             text("ALTER TABLE downloads ADD COLUMN synced_playlist_id INTEGER")
         )
         conn.commit()
-except Exception:
+except OSError:
     pass
 
 app = FastAPI(title="LocalTune")
@@ -58,7 +58,7 @@ downloads_dir = os.getenv("DOWNLOAD_DIR", "/downloads")
 try:
     os.makedirs(downloads_dir, exist_ok=True)
     app.mount("/downloads", StaticFiles(directory=downloads_dir), name="downloads")
-except Exception as e:
+except OSError as e:
     logger.warning(f"Could not mount downloads directory {downloads_dir}: {e}")
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
@@ -78,7 +78,7 @@ def health_check(db: Session = Depends(get_db)):
             "downloads_count": count,
             "synced_playlists_count": playlists_count,
         }
-    except Exception as e:
+    except OSError as e:
         logger.error(f"Database connection failed: {e}")
         return {"status": "error", "logger": "configured", "database": f"failed: {e}"}
 
@@ -135,7 +135,7 @@ async def download_url(
         )
         db.add(new_download)
         db.commit()
-    except Exception as e:
+    except OSError as e:
         logger.error(f"Failed to insert placeholder download: {e}")
         db.rollback()
 
@@ -256,8 +256,14 @@ async def api_tracks(request: Request, db: Session = Depends(get_db)):
                     or "Fetching Metadata" in statuses
                 ):
                     status = "Downloading"
-                elif "Failed" in statuses and "Completed" not in statuses:
+                elif all(s == "Deleted" for s in statuses):
+                    status = "Deleted"
+                elif all(s == "Aborted" for s in statuses):
+                    status = "Aborted"
+                elif all(s == "Failed" for s in statuses):
                     status = "Failed"
+                elif "Completed" in statuses:
+                    status = "Completed"
                 else:
                     status = "Completed"
 
@@ -290,17 +296,51 @@ async def delete_track(request: Request, track_id: int, db: Session = Depends(ge
         if track.file_path and os.path.exists(track.file_path):
             try:
                 os.remove(track.file_path)
-            except Exception as e:
+            except OSError as e:
                 logger.error(f"Could not delete file {track.file_path}: {e}")
         db.delete(track)
         db.commit()
     return ""
 
 
-@app.post("/api/tracks/{track_id}/abort", response_class=HTMLResponse)
-async def abort_track(
+@app.post("/api/tracks/{track_id}/delete", response_class=HTMLResponse)
+async def soft_delete_track(
     request: Request, track_id: int, db: Session = Depends(get_db)
 ):
+    """Soft-deletes a terminal on-demand track.
+
+    Removes the physical file and transitions status to 'Deleted'.
+    Active tracks (Queued/Downloading) and synced playlist tracks are rejected.
+    """
+    track = db.query(models.Download).filter(models.Download.id == track_id).first()
+    if not track:
+        raise HTTPException(status_code=404, detail="Track not found")
+
+    if track.synced_playlist_id is not None:
+        raise HTTPException(
+            status_code=400, detail="Synced playlist tracks cannot be deleted here"
+        )
+
+    if track.status in ("Queued", "Downloading"):
+        # Cannot soft-delete active tracks; must be aborted first
+        return await _render_tracks(request, db)
+
+    if track.file_path and os.path.exists(track.file_path):
+        try:
+            os.remove(track.file_path)
+        except OSError as e:
+            logger.error(f"Could not delete file {track.file_path}: {e}")
+
+    track.status = "Deleted"
+    track.file_path = None
+    db.commit()
+    logger.info(f"Track {track_id} soft-deleted by user.")
+
+    return await _render_tracks(request, db)
+
+
+@app.post("/api/tracks/{track_id}/abort", response_class=HTMLResponse)
+async def abort_track(request: Request, track_id: int, db: Session = Depends(get_db)):
     """Abort an individual on-demand track that is Queued or Downloading.
 
     Synced Playlist tracks (synced_playlist_id is set) are rejected.
@@ -333,15 +373,15 @@ async def abort_track(
     # Eagerly mark the record as Aborted so polling reflects the change immediately
     track.status = "Aborted"
     db.commit()
-    logger.info(f"Track {track_id} (track_id={track.track_id}) marked as Aborted by user.")
+    logger.info(
+        f"Track {track_id} (track_id={track.track_id}) marked as Aborted by user."
+    )
 
     return await _render_tracks(request, db)
 
 
 @app.post("/api/jobs/{job_id}/abort", response_class=HTMLResponse)
-async def abort_job(
-    request: Request, job_id: str, db: Session = Depends(get_db)
-):
+async def abort_job(request: Request, job_id: str, db: Session = Depends(get_db)):
     """Abort an entire on-demand job/batch that is partially or fully Queued/Downloading.
 
     Signals the download_manager to terminate all active subprocesses for the
@@ -367,8 +407,74 @@ async def abort_job(
     for t in active_tracks:
         t.status = "Aborted"
     db.commit()
-    logger.info(f"Job {job_id} aborted by user — {len(active_tracks)} tracks marked Aborted.")
+    logger.info(
+        f"Job {job_id} aborted by user — {len(active_tracks)} tracks marked Aborted."
+    )
 
+    return await _render_tracks(request, db)
+
+
+@app.post("/api/jobs/{job_id}/delete", response_class=HTMLResponse)
+async def soft_delete_job(request: Request, job_id: str, db: Session = Depends(get_db)):
+    """Soft-deletes all child tracks of an on-demand playlist job."""
+    tracks = (
+        db.query(models.Download)
+        .filter(
+            models.Download.job_id == job_id,
+            models.Download.synced_playlist_id.is_(None),
+        )
+        .all()
+    )
+
+    if not tracks:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Guard: do not allow if any track is active
+    if any(t.status in ("Queued", "Downloading") for t in tracks):
+        return await _render_tracks(request, db)
+
+    for track in tracks:
+        if track.file_path and os.path.exists(track.file_path):
+            try:
+                os.remove(track.file_path)
+            except OSError as e:
+                logger.error(f"Could not delete file {track.file_path}: {e}")
+        track.status = "Deleted"
+        track.file_path = None
+
+    db.commit()
+    logger.info(f"Job {job_id} soft-deleted by user — {len(tracks)} tracks affected.")
+
+    return await _render_tracks(request, db)
+
+
+@app.delete("/api/jobs/{job_id}", response_class=HTMLResponse)
+async def delete_job(request: Request, job_id: str, db: Session = Depends(get_db)):
+    """Permanently dismisses all child tracks of an on-demand playlist job."""
+    tracks = (
+        db.query(models.Download)
+        .filter(
+            models.Download.job_id == job_id,
+            models.Download.synced_playlist_id.is_(None),
+        )
+        .all()
+    )
+
+    count = 0
+    for track in tracks:
+        if track.file_path and os.path.exists(track.file_path):
+            try:
+                os.remove(track.file_path)
+            except OSError as e:
+                logger.error(f"Could not delete file {track.file_path}: {e}")
+        db.delete(track)
+        count += 1
+
+    if count > 0:
+        db.commit()
+        logger.info(f"Job {job_id} dismissed — {count} tracks purged.")
+
+    # Return full re-render so the entire playlist container is removed
     return await _render_tracks(request, db)
 
 
@@ -585,7 +691,7 @@ async def delete_synced_playlist(
                     if os.path.exists(dl.file_path):
                         try:
                             os.remove(dl.file_path)
-                        except Exception as e:
+                        except OSError as e:
                             logger.error(
                                 f"Error deleting file {dl.file_path} on playlist purge: {e}"
                             )
@@ -597,7 +703,7 @@ async def delete_synced_playlist(
                     try:
                         shutil.rmtree(folder)
                         logger.info(f"Purged playlist folder from disk: {folder}")
-                    except Exception as e:
+                    except OSError as e:
                         logger.error(f"Error deleting playlist folder {folder}: {e}")
 
         db.delete(sp)
