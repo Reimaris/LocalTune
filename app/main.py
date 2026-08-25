@@ -295,11 +295,19 @@ async def api_tracks(request: Request, db: Session = Depends(get_db)):
 async def delete_track(request: Request, track_id: int, db: Session = Depends(get_db)):
     track = db.query(models.Download).filter(models.Download.id == track_id).first()
     if track:
-        if track.file_path and os.path.exists(track.file_path):
-            try:
-                os.remove(track.file_path)
-            except OSError as e:
-                logger.error(f"Could not delete file {track.file_path}: {e}")
+        if track.file_path:
+            parent_dir = os.path.dirname(track.file_path)
+            if os.path.exists(track.file_path):
+                try:
+                    os.remove(track.file_path)
+                except OSError as e:
+                    logger.error(f"Could not delete file {track.file_path}: {e}")
+            if parent_dir != str(DOWNLOAD_DIR) and parent_dir.startswith(str(DOWNLOAD_DIR)):
+                try:
+                    os.rmdir(parent_dir)
+                    logger.info(f"Purged empty playlist folder from disk: {parent_dir}")
+                except OSError:
+                    pass
         db.delete(track)
         db.commit()
     return ""
@@ -327,11 +335,19 @@ async def soft_delete_track(
         # Cannot soft-delete active tracks; must be aborted first
         return await _render_tracks(request, db)
 
-    if track.file_path and os.path.exists(track.file_path):
-        try:
-            os.remove(track.file_path)
-        except OSError as e:
-            logger.error(f"Could not delete file {track.file_path}: {e}")
+    if track.file_path:
+        parent_dir = os.path.dirname(track.file_path)
+        if os.path.exists(track.file_path):
+            try:
+                os.remove(track.file_path)
+            except OSError as e:
+                logger.error(f"Could not delete file {track.file_path}: {e}")
+        if parent_dir != str(DOWNLOAD_DIR) and parent_dir.startswith(str(DOWNLOAD_DIR)):
+            try:
+                os.rmdir(parent_dir)
+                logger.info(f"Purged empty playlist folder from disk: {parent_dir}")
+            except OSError:
+                pass
 
     track.status = "Deleted"
     track.file_path = None
