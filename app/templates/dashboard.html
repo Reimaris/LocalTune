@@ -167,8 +167,10 @@
                 </div>
             </div>
 
-            <div id="track-list-container" hx-get="/api/tracks" hx-trigger="load, every 2s" class="overflow-x-auto min-h-[400px]">
-                <div class="p-8 text-center text-[#a1a1aa]">Loading tracks...</div>
+            <div id="track-list-container" hx-get="/api/tracks" hx-trigger="load, every 2s" hx-target="#tracks-table-container" hx-swap="innerHTML" class="overflow-x-auto min-h-[400px]">
+                <div id="tracks-table-container">
+                    <div class="p-8 text-center text-[#a1a1aa]">Loading tracks...</div>
+                </div>
             </div>
         </div>
     </div>

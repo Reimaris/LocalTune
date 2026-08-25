@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from yt_dlp.utils import sanitize_filename as yt_dlp_sanitize
 
 from app.core.notifications import send_telegram_notification
+from app.core.process_registry import cleanup_partial_files, download_manager
 from app.db import models
 
 logger = logging.getLogger(__name__)
@@ -109,8 +110,14 @@ def handle_spotify(
     file_format: str = "opus",
     synced_playlist_id: int | None = None,
 ) -> str:
-    """Handles Spotify downloads with spotdl, applying delta-sync."""
+    """Handles Spotify downloads with spotdl, applying delta-sync.
+
+    On-demand downloads (synced_playlist_id is None) support granular per-track
+    abort via the download_manager process registry.
+    Synced Playlist jobs (synced_playlist_id is set) are not abortable.
+    """
     temp_file = f"temp_{job_id}.spotdl"
+    is_on_demand = synced_playlist_id is None
 
     try:
         settings = db.query(models.Settings).first()
@@ -123,7 +130,7 @@ def handle_spotify(
                 str(settings.spotify_client_secret).strip(),
             ]
 
-        # Generate metadata
+        # Generate metadata (single blocking call — fast, not per-track abortable)
         cmd = (
             ["spotdl"]
             + auth_args
@@ -175,7 +182,7 @@ def handle_spotify(
             raw_id = track.get("song_id")
             track_id = f"spotify_{raw_id}" if raw_id else uuid.uuid4().hex
             if not check_exists(db, track_id):
-                to_download.append(track)
+                to_download.append((track, track_id))
                 insert_download(
                     db,
                     track_id,
@@ -192,44 +199,22 @@ def handle_spotify(
             logger.info("All tracks already downloaded.")
             return main_title
 
-        # Update metadata file for delta sync
-        with open(temp_file, "w") as f:
-            json.dump(to_download, f)
+        # Per-track download loop with abort support
+        for track, track_id in to_download:
+            # Check abort signal before starting each track
+            if is_on_demand and download_manager.is_track_aborted(job_id, track_id):
+                logger.info(f"Track {track_id} aborted before download start.")
+                insert_download(
+                    db, track_id,
+                    track.get("name", "Unknown Title"),
+                    track.get("artist", "Unknown Artist"),
+                    None, "Aborted", job_id, job_title_to_save, synced_playlist_id,
+                )
+                continue
 
-        # Download using built-in template
-        cmd_dl = (
-            ["spotdl"]
-            + auth_args
-            + [
-                "--yt-dlp-args",
-                "extractor-args=youtube:player_client=android,web,ios",
-                temp_file,
-                "--output",
-                f"/downloads/{{list-name}}/{{artist}} - {{title}}.{file_format}",
-                "--format",
-                file_format,
-            ]
-        )
-        try:
-            subprocess.run(
-                cmd_dl, check=True, capture_output=True, text=True, timeout=3600
-            )
-        except subprocess.CalledProcessError as e:
-            error_output = (
-                e.stderr.strip()
-                if e.stderr and e.stderr.strip()
-                else (e.stdout.strip() if e.stdout else "Unknown error")
-            )
-            raise RuntimeError(f"spotdl download failed: {error_output}")
-
-        # Mark as completed
-        for track in to_download:
-            raw_id = track.get("song_id")
-            track_id = f"spotify_{raw_id}" if raw_id else uuid.uuid4().hex
             title = track.get("name", "Unknown Title")
             artist = track.get("artist", "Unknown Artist")
             list_name = track.get("list_name", "")
-
             sanitized_title = spotdl_sanitize(title)
             sanitized_artist = spotdl_sanitize(artist)
             sanitized_list_name = spotdl_sanitize(list_name) if list_name else ""
@@ -239,17 +224,81 @@ def handle_spotify(
                 if list_name
                 else f"/downloads/{sanitized_artist} - {sanitized_title}.{file_format}"
             )
-            insert_download(
-                db,
-                track_id,
-                title,
-                artist,
-                file_path,
-                "Completed",
-                job_id,
-                job_title_to_save,
-                synced_playlist_id,
+
+            # Write single-track temp file for spotdl
+            track_temp_file = f"temp_{job_id}_{track_id}.spotdl"
+            with open(track_temp_file, "w") as f:
+                json.dump([track], f)
+
+            cmd_dl = (
+                ["spotdl"]
+                + auth_args
+                + [
+                    "--yt-dlp-args",
+                    "extractor-args=youtube:player_client=android,web,ios",
+                    track_temp_file,
+                    "--output",
+                    f"/downloads/{{list-name}}/{{artist}} - {{title}}.{file_format}"
+                    if list_name
+                    else f"/downloads/{{artist}} - {{title}}.{file_format}",
+                    "--format",
+                    file_format,
+                ]
             )
+
+            aborted = False
+            try:
+                proc = subprocess.Popen(
+                    cmd_dl, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                )
+                if is_on_demand:
+                    download_manager.register_process(job_id, track_id, proc)
+
+                _stdout, _stderr = proc.communicate(timeout=3600)
+
+                if is_on_demand:
+                    download_manager.unregister_process(job_id, track_id)
+
+                # Re-check abort in case signal arrived during download
+                if is_on_demand and download_manager.is_track_aborted(job_id, track_id):
+                    aborted = True
+            except Exception as e:
+                if is_on_demand:
+                    download_manager.unregister_process(job_id, track_id)
+                if is_on_demand and download_manager.is_track_aborted(job_id, track_id):
+                    aborted = True
+                else:
+                    logger.error(f"spotdl failed for track {track_id}: {e}")
+
+            if aborted:
+                logger.info(f"Track {track_id} aborted — cleaning up partial files.")
+                cleanup_partial_files(
+                    output_path=file_path,
+                    temp_files=[track_temp_file],
+                )
+                insert_download(
+                    db, track_id, title, artist, None, "Aborted",
+                    job_id, job_title_to_save, synced_playlist_id,
+                )
+                if is_on_demand and os.path.exists(track_temp_file):
+                    os.remove(track_temp_file)
+                continue
+
+            # Mark completed if file exists on disk
+            if os.path.exists(file_path):
+                insert_download(
+                    db, track_id, title, artist, file_path, "Completed",
+                    job_id, job_title_to_save, synced_playlist_id,
+                )
+            else:
+                logger.error(f"spotdl output file not found: {file_path}")
+                insert_download(
+                    db, track_id, title, artist, None, "Failed",
+                    job_id, job_title_to_save, synced_playlist_id,
+                )
+
+            if os.path.exists(track_temp_file):
+                os.remove(track_temp_file)
 
         # Fix permissions on /downloads
         fix_permissions(DOWNLOAD_DIR)
@@ -259,6 +308,8 @@ def handle_spotify(
     finally:
         if os.path.exists(temp_file):
             os.remove(temp_file)
+        if is_on_demand:
+            download_manager.cleanup_job(job_id)
 
 
 def handle_ytdlp(
@@ -270,9 +321,14 @@ def handle_ytdlp(
     synced_playlist_id: int | None = None,
     resolution_cap: str = "best",
 ) -> str:
-    """Handles generic yt-dlp downloads for non-Spotify URLs (YouTube, SoundCloud, Bandcamp, etc.)."""
-    batch_file = f"batch_{job_id}.txt"
+    """Handles generic yt-dlp downloads for non-Spotify URLs (YouTube, SoundCloud, Bandcamp, etc.).
+
+    On-demand downloads (synced_playlist_id is None) support granular per-track
+    abort via the download_manager process registry.
+    Synced Playlist jobs (synced_playlist_id is set) are not abortable.
+    """
     is_youtube = bool(re.search(r"(youtube\.com|youtu\.be)", url))
+    is_on_demand = synced_playlist_id is None
 
     try:
         cmd_meta = ["yt-dlp", "--yes-playlist", "--ignore-errors"]
@@ -319,6 +375,8 @@ def handle_ytdlp(
             job_title_to_save = None
             tracks_data = [metadata]
 
+        sanitized_playlist_title = yt_dlp_sanitize(main_title) if is_playlist else ""
+
         for track in tracks_data:
             raw_id = track.get("id")
             if not raw_id:
@@ -343,91 +401,23 @@ def handle_ytdlp(
             logger.info("All tracks already downloaded.")
             return main_title
 
-        # Create batch file using canonical webpage_url / url
-        with open(batch_file, "w") as f:
-            for track, _ in to_download:
-                target_url = track.get("webpage_url") or track.get("url")
-                if not target_url or not target_url.startswith("http"):
-                    if is_youtube and track.get("id"):
-                        target_url = f"https://www.youtube.com/watch?v={track['id']}"
-                    else:
-                        target_url = url
-                f.write(f"{target_url}\n")
-
-        # Download remaining tracks
-        cmd_dl = ["yt-dlp", "--yes-playlist", "--ignore-errors"]
-        if is_youtube:
-            if media_type == "video":
-                cmd_dl.extend(
-                    ["--extractor-args", "youtube:player_client=web_embedded,android"]
-                )
-            else:
-                cmd_dl.extend(
-                    ["--extractor-args", "youtube:player_client=android,web,ios"]
-                )
-
-        sanitized_playlist_title = yt_dlp_sanitize(main_title) if is_playlist else ""
-        if is_playlist and sanitized_playlist_title:
-            output_tmpl = f"/downloads/{sanitized_playlist_title}/%(title)s.%(ext)s"
-        else:
-            output_tmpl = "/downloads/%(title)s.%(ext)s"
-
-        if media_type == "audio":
-            cmd_dl.extend(
-                [
-                    "-x",
-                    "--audio-format",
-                    file_format,
-                    "--audio-quality",
-                    "0",
-                    "--windows-filenames",
-                    "-a",
-                    batch_file,
-                    "-o",
-                    output_tmpl,
-                ]
-            )
-        else:
-            # Build resolution-capped format string for video
-            cap = resolution_cap.strip() if resolution_cap else "best"
-            if cap and cap != "best":
-                fmt = f"bestvideo[height<=?{cap}]+bestaudio/best[height<=?{cap}]/best"
-            else:
-                fmt = "bestvideo+bestaudio/best"
-
-            cmd_dl.extend(
-                [
-                    "-f",
-                    fmt,
-                    "--merge-output-format",
-                    file_format,
-                    "--windows-filenames",
-                    "-a",
-                    batch_file,
-                    "-o",
-                    output_tmpl,
-                ]
-            )
-
-        dl_res = subprocess.run(cmd_dl, capture_output=True, text=True)
-        if dl_res.returncode not in (0, 1):
-            error_msg = (
-                dl_res.stderr.strip()
-                if dl_res.stderr
-                else f"yt-dlp exit code {dl_res.returncode}"
-            )
-            raise RuntimeError(f"yt-dlp download failed: {error_msg[:200]}")
-
-        # Mark as completed or failed after verifying file existence on disk
+        # Per-track download loop with abort support
         failed_count = 0
         for track, track_id in to_download:
+            # Check abort signal before starting each track
+            if is_on_demand and download_manager.is_track_aborted(job_id, track_id):
+                logger.info(f"Track {track_id} aborted before download start.")
+                title = track.get("title", "Unknown Title")
+                artist = track.get("uploader") or track.get("artist") or "Unknown Artist"
+                insert_download(
+                    db, track_id, title, artist, None, "Aborted",
+                    job_id, job_title_to_save, synced_playlist_id,
+                )
+                continue
+
             title = track.get("title", "Unknown Title")
             artist = track.get("uploader") or track.get("artist") or "Unknown Artist"
-
             sanitized_title = yt_dlp_sanitize(title)
-            sanitized_playlist_title = (
-                yt_dlp_sanitize(main_title) if is_playlist else ""
-            )
 
             file_path = (
                 f"/downloads/{sanitized_playlist_title}/{sanitized_title}.{file_format}"
@@ -435,8 +425,99 @@ def handle_ytdlp(
                 else f"/downloads/{sanitized_title}.{file_format}"
             )
 
+            # Resolve canonical URL for this track
+            target_url = track.get("webpage_url") or track.get("url")
+            if not target_url or not target_url.startswith("http"):
+                if is_youtube and track.get("id"):
+                    target_url = f"https://www.youtube.com/watch?v={track['id']}"
+                else:
+                    target_url = url
+
+            # Build the yt-dlp download command for this single track
+            output_tmpl = (
+                f"/downloads/{sanitized_playlist_title}/%(title)s.%(ext)s"
+                if is_playlist and sanitized_playlist_title
+                else "/downloads/%(title)s.%(ext)s"
+            )
+            cmd_dl = ["yt-dlp", "--ignore-errors"]
+            if is_youtube:
+                if media_type == "video":
+                    cmd_dl.extend(
+                        ["--extractor-args", "youtube:player_client=web_embedded,android"]
+                    )
+                else:
+                    cmd_dl.extend(
+                        ["--extractor-args", "youtube:player_client=android,web,ios"]
+                    )
+
+            if media_type == "audio":
+                cmd_dl.extend(
+                    [
+                        "-x",
+                        "--audio-format",
+                        file_format,
+                        "--audio-quality",
+                        "0",
+                        "--windows-filenames",
+                        "-o",
+                        output_tmpl,
+                        target_url,
+                    ]
+                )
+            else:
+                cap = resolution_cap.strip() if resolution_cap else "best"
+                if cap and cap != "best":
+                    fmt = f"bestvideo[height<=?{cap}]+bestaudio/best[height<=?{cap}]/best"
+                else:
+                    fmt = "bestvideo+bestaudio/best"
+                cmd_dl.extend(
+                    [
+                        "-f",
+                        fmt,
+                        "--merge-output-format",
+                        file_format,
+                        "--windows-filenames",
+                        "-o",
+                        output_tmpl,
+                        target_url,
+                    ]
+                )
+
+            aborted = False
+            try:
+                proc = subprocess.Popen(
+                    cmd_dl, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                )
+                if is_on_demand:
+                    download_manager.register_process(job_id, track_id, proc)
+
+                _stdout, _stderr = proc.communicate(timeout=3600)
+
+                if is_on_demand:
+                    download_manager.unregister_process(job_id, track_id)
+
+                # Re-check abort in case signal arrived during download
+                if is_on_demand and download_manager.is_track_aborted(job_id, track_id):
+                    aborted = True
+            except Exception as e:
+                if is_on_demand:
+                    download_manager.unregister_process(job_id, track_id)
+                if is_on_demand and download_manager.is_track_aborted(job_id, track_id):
+                    aborted = True
+                else:
+                    logger.error(f"yt-dlp failed for track {track_id}: {e}")
+
+            if aborted:
+                logger.info(f"Track {track_id} aborted — cleaning up partial files.")
+                cleanup_partial_files(output_path=file_path)
+                insert_download(
+                    db, track_id, title, artist, None, "Aborted",
+                    job_id, job_title_to_save, synced_playlist_id,
+                )
+                continue
+
+            # Verify file on disk (with sanitization fallback)
             if not os.path.exists(file_path):
-                # Fallback matching in target folder in case yt-dlp sanitized special characters slightly differently
                 target_dir = os.path.dirname(file_path)
                 matching_files = [
                     os.path.join(target_dir, f)
@@ -463,9 +544,7 @@ def handle_ytdlp(
                 )
             else:
                 failed_count += 1
-                logger.error(
-                    f"Download output file not found: {file_path}. yt-dlp stderr: {dl_res.stderr}"
-                )
+                logger.error(f"Download output file not found: {file_path}.")
                 insert_download(
                     db,
                     track_id,
@@ -479,8 +558,7 @@ def handle_ytdlp(
                 )
 
         if failed_count == len(to_download):
-            error_details = dl_res.stderr.strip() or "Downloaded file not found on disk"
-            raise RuntimeError(f"yt-dlp download failed: {error_details[:200]}")
+            raise RuntimeError("All yt-dlp track downloads failed: no output files found on disk.")
 
         # Fix permissions on /downloads
         fix_permissions(DOWNLOAD_DIR)
@@ -488,8 +566,8 @@ def handle_ytdlp(
         return main_title
 
     finally:
-        if os.path.exists(batch_file):
-            os.remove(batch_file)
+        if is_on_demand:
+            download_manager.cleanup_job(job_id)
 
 
 # Alias for backwards compatibility

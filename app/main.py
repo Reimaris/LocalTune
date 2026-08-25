@@ -1,7 +1,7 @@
 import re
 import os
 import asyncio
-from fastapi import FastAPI, Request, Depends, Form, BackgroundTasks
+from fastapi import FastAPI, Request, Depends, Form, BackgroundTasks, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +13,7 @@ import shutil
 from app.core.logging_config import setup_logging, log_generator
 from app.worker import process_download, process_playlist_sync
 from app.core.downloader import fetch_playlist_title, yt_dlp_sanitize, DOWNLOAD_DIR
+from app.core.process_registry import download_manager
 from app.core.scheduler import periodic_sync_loop
 from app.db import models
 from app.db.database import engine, get_db
@@ -294,6 +295,86 @@ async def delete_track(request: Request, track_id: int, db: Session = Depends(ge
         db.delete(track)
         db.commit()
     return ""
+
+
+@app.post("/api/tracks/{track_id}/abort", response_class=HTMLResponse)
+async def abort_track(
+    request: Request, track_id: int, db: Session = Depends(get_db)
+):
+    """Abort an individual on-demand track that is Queued or Downloading.
+
+    Synced Playlist tracks (synced_playlist_id is set) are rejected.
+    Signals the download_manager to terminate the active subprocess and
+    marks the track status as Aborted in the database.
+    """
+    track = db.query(models.Download).filter(models.Download.id == track_id).first()
+    if not track:
+        raise HTTPException(status_code=404, detail="Track not found")
+
+    # Safety guard: only on-demand downloads are abortable
+    if track.synced_playlist_id is not None:
+        raise HTTPException(
+            status_code=400, detail="Synced playlist tracks cannot be aborted"
+        )
+
+    if track.status not in ("Queued", "Downloading"):
+        # Already terminal — return refreshed list without erroring
+        return await _render_tracks(request, db)
+
+    job_id = track.job_id or track.track_id
+    if not job_id or not track.track_id:
+        # Cannot abort without identifiers — just mark Aborted in DB
+        track.status = "Aborted"
+        db.commit()
+        return await _render_tracks(request, db)
+
+    download_manager.abort_track(job_id, track.track_id)
+
+    # Eagerly mark the record as Aborted so polling reflects the change immediately
+    track.status = "Aborted"
+    db.commit()
+    logger.info(f"Track {track_id} (track_id={track.track_id}) marked as Aborted by user.")
+
+    return await _render_tracks(request, db)
+
+
+@app.post("/api/jobs/{job_id}/abort", response_class=HTMLResponse)
+async def abort_job(
+    request: Request, job_id: str, db: Session = Depends(get_db)
+):
+    """Abort an entire on-demand job/batch that is partially or fully Queued/Downloading.
+
+    Signals the download_manager to terminate all active subprocesses for the
+    job and marks all Queued/Downloading tracks in the batch as Aborted.
+    """
+    active_tracks = (
+        db.query(models.Download)
+        .filter(
+            models.Download.job_id == job_id,
+            models.Download.synced_playlist_id.is_(None),
+            models.Download.status.in_(["Queued", "Downloading"]),
+        )
+        .all()
+    )
+
+    if not active_tracks:
+        return await _render_tracks(request, db)
+
+    # Signal the process registry to abort all subprocesses for this job
+    download_manager.abort_job(job_id)
+
+    # Eagerly mark all active tracks as Aborted
+    for t in active_tracks:
+        t.status = "Aborted"
+    db.commit()
+    logger.info(f"Job {job_id} aborted by user — {len(active_tracks)} tracks marked Aborted.")
+
+    return await _render_tracks(request, db)
+
+
+async def _render_tracks(request: Request, db: Session) -> HTMLResponse:
+    """Re-renders the full track list partial (shared by abort & other endpoints)."""
+    return await api_tracks(request, db)
 
 
 # SYNCED PLAYLISTS API ENDPOINTS

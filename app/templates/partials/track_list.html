@@ -26,6 +26,10 @@
         <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-900/30 text-emerald-400 border border-emerald-800/50">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Completed
         </span>
+    {% elif status == 'Aborted' %}
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-800 text-zinc-400 border border-zinc-700">
+            <span class="w-1.5 h-1.5 rounded-full bg-zinc-500"></span> Aborted
+        </span>
     {% else %}
         <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-900/30 text-red-400 border border-red-800/50">
             <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> Failed
@@ -33,16 +37,16 @@
     {% endif %}
 {% endmacro %}
 
-<table class="w-full text-left border-collapse whitespace-nowrap">
+<table class="w-full text-left border-collapse table-fixed">
     <thead class="bg-[#2a2a32] text-[#d1d5db] font-semibold text-sm border-b border-[#3f3f46]">
         <tr>
-            <th class="px-6 py-4">Title</th>
-            <th class="px-6 py-4">Artist</th>
-            <th class="px-6 py-4">Status</th>
-            <th class="px-6 py-4">Actions</th>
+            <th class="px-6 py-4 w-5/12">Title</th>
+            <th class="px-6 py-4 w-3/12">Artist</th>
+            <th class="px-6 py-4 w-2/12">Status</th>
+            <th class="px-6 py-4 w-2/12 text-right">Actions</th>
         </tr>
     </thead>
-    
+
     {% if not display_items %}
     <tbody class="divide-y divide-[#3f3f46] text-sm">
         <tr class="hover:bg-[#2a2a32] transition-colors group">
@@ -52,18 +56,26 @@
         </tr>
     </tbody>
     {% else %}
-    
+
     {% for item in display_items %}
         {% if item.type == 'track' %}
             {% set track = item.item %}
             <tbody class="divide-y divide-[#3f3f46] text-sm">
                 <tr class="hover:bg-[#2a2a32] transition-colors group" data-title="{{ track.title | lower | e }}" data-artist="{{ track.artist | lower | e }}" x-show="search === '' || $el.dataset.title.includes(search.toLowerCase()) || $el.dataset.artist.includes(search.toLowerCase())">
-                    <td class="px-6 py-4">
+                    <td class="px-6 py-4 break-words">
                         <span class="font-bold text-white">{{ track.title }}</span>
                     </td>
-                    <td class="px-6 py-4 text-[#a1a1aa]">{{ track.artist }}</td>
+                    <td class="px-6 py-4 break-words text-[#a1a1aa]">{{ track.artist }}</td>
                     <td class="px-6 py-4">{{ status_badge(track.status) }}</td>
-                    <td class="px-6 py-4 flex justify-end gap-3">
+                    <td class="px-6 py-4 whitespace-nowrap flex justify-end gap-3">
+                        {% if track.status in ['Queued', 'Downloading'] %}
+                        <button class="text-amber-400 hover:text-amber-300 transition-colors" title="Abort Download"
+                            hx-post="/api/tracks/{{ track.id }}/abort"
+                            hx-target="#tracks-table-container"
+                            hx-swap="innerHTML">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </button>
+                        {% else %}
                         {% if track.status == 'Completed' and track.file_path %}
                         <a href="{{ track.file_path }}" download class="text-[#a1a1aa] hover:text-white transition-colors" title="Download File">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
@@ -72,6 +84,7 @@
                         <button class="text-[#a1a1aa] hover:text-red-500 transition-colors" title="Delete Track" hx-delete="/api/tracks/{{ track.id }}" hx-target="closest tr" hx-swap="outerHTML">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                         </button>
+                        {% endif %}
                     </td>
                 </tr>
             </tbody>
@@ -79,30 +92,46 @@
             <tbody class="divide-y divide-[#3f3f46] text-sm">
                 <!-- Parent Playlist Row -->
                 <tr class="hover:bg-[#2a2a32] transition-colors group cursor-pointer bg-[#24242b]" @click="expandedPlaylists['{{ item.job_id }}'] = !expandedPlaylists['{{ item.job_id }}']" data-title="{{ item.title | lower | e }}" x-show="search === '' || $el.dataset.title.includes(search.toLowerCase())">
-                    <td class="px-6 py-4">
-                        <div class="flex items-center gap-2">
-                            <svg class="w-5 h-5 text-[#a1a1aa] transition-transform duration-200" :class="expandedPlaylists['{{ item.job_id }}'] ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                            <svg class="w-5 h-5 text-[#d40060]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
+                    <td class="px-6 py-4 break-words">
+                        <div class="flex items-start gap-2">
+                            <svg class="w-5 h-5 text-[#a1a1aa] transition-transform duration-200 shrink-0 mt-0.5" :class="expandedPlaylists['{{ item.job_id }}'] ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                            <svg class="w-5 h-5 text-[#d40060] shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
                             <span class="font-bold text-white">{{ item.title }}</span>
-                            <span class="text-xs text-[#a1a1aa] bg-[#3f3f46] px-2 py-0.5 rounded-full ml-2">{{ item.tracks | length }} tracks</span>
+                            <span class="text-xs text-[#a1a1aa] bg-[#3f3f46] px-2 py-0.5 rounded-full ml-2 shrink-0">{{ item.tracks | length }} tracks</span>
                         </div>
                     </td>
                     <td class="px-6 py-4 text-[#a1a1aa]">Playlist</td>
                     <td class="px-6 py-4">{{ status_badge(item.status) }}</td>
-                    <td class="px-6 py-4 flex justify-end gap-3">
-                        <!-- No bulk delete for now -->
+                    <td class="px-6 py-4 whitespace-nowrap flex justify-end gap-3">
+                        {% if item.status in ['Downloading', 'Queued'] %}
+                        <button class="text-amber-400 hover:text-amber-300 transition-colors" title="Abort Playlist Download"
+                            hx-post="/api/jobs/{{ item.job_id }}/abort"
+                            @click.stop
+                            hx-target="#tracks-table-container"
+                            hx-swap="innerHTML">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </button>
+                        {% endif %}
                     </td>
                 </tr>
-                
+
                 <!-- Child Track Rows -->
                 {% for track in item.tracks %}
                 <tr class="hover:bg-[#3f3f46] transition-colors group bg-[#16161b]" data-title="{{ track.title | lower | e }}" data-artist="{{ track.artist | lower | e }}" x-show="expandedPlaylists['{{ item.job_id }}'] && (search === '' || $el.dataset.title.includes(search.toLowerCase()) || $el.dataset.artist.includes(search.toLowerCase()))" x-cloak>
-                    <td class="px-6 py-4 pl-14">
+                    <td class="px-6 py-4 pl-14 break-words">
                         <span class="font-medium text-white">{{ track.title }}</span>
                     </td>
-                    <td class="px-6 py-4 text-[#a1a1aa]">{{ track.artist }}</td>
+                    <td class="px-6 py-4 break-words text-[#a1a1aa]">{{ track.artist }}</td>
                     <td class="px-6 py-4">{{ status_badge(track.status) }}</td>
-                    <td class="px-6 py-4 flex justify-end gap-3">
+                    <td class="px-6 py-4 whitespace-nowrap flex justify-end gap-3">
+                        {% if track.status in ['Queued', 'Downloading'] %}
+                        <button class="text-amber-400 hover:text-amber-300 transition-colors" title="Abort Download"
+                            hx-post="/api/tracks/{{ track.id }}/abort"
+                            hx-target="#tracks-table-container"
+                            hx-swap="innerHTML">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </button>
+                        {% else %}
                         {% if track.status == 'Completed' and track.file_path %}
                         <a href="{{ track.file_path }}" download class="text-[#a1a1aa] hover:text-white transition-colors" title="Download File">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
@@ -111,6 +140,7 @@
                         <button class="text-[#a1a1aa] hover:text-red-500 transition-colors" title="Delete Track" hx-delete="/api/tracks/{{ track.id }}" hx-target="closest tr" hx-swap="outerHTML">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                         </button>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
