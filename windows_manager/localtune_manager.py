@@ -198,7 +198,72 @@ def apply_update_archive(zip_path: str, project_dir: str) -> None:
                     continue
                 src_file = os.path.join(root, f)
                 dest_file = os.path.join(dest_dir, f)
-                shutil.copy2(src_file, dest_file)
+                try:
+                    shutil.copy2(src_file, dest_file)
+                except PermissionError:
+                    # On Windows, a running executable (.exe) cannot be overwritten in-place,
+                    # but NTFS allows renaming it. Move the locked file to .old and copy again.
+                    old_file = dest_file + ".old"
+                    if os.path.exists(old_file):
+                        try:
+                            os.remove(old_file)
+                        except OSError:
+                            pass
+                    try:
+                        os.rename(dest_file, old_file)
+                        shutil.copy2(src_file, dest_file)
+                    except OSError:
+                        pass
+
+
+def cleanup_old_executables(target_dir: str | None = None) -> None:
+    """Removes leftover *.old files from previous in-place updates."""
+    if target_dir is None:
+        target_dir = get_project_dir() or get_base_dir()
+    try:
+        for f in os.listdir(target_dir):
+            if f.endswith(".old"):
+                old_path = os.path.join(target_dir, f)
+                try:
+                    os.remove(old_path)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+
+def kill_process_tree(proc: subprocess.Popen[Any]) -> None:
+    """Terminates process and any spawned child processes cleanly across platforms."""
+    if proc.poll() is not None:
+        return
+    try:
+        proc.terminate()
+        try:
+            proc.wait(timeout=3.0)
+            return
+        except subprocess.TimeoutExpired:
+            pass
+    except Exception:
+        pass
+
+    # Force kill process tree
+    if os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                capture_output=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000),
+            )
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+    else:
+        try:
+            proc.kill()
+        except Exception:
+            pass
 
 
 class ManagerApp(ctk.CTk if ctk else object):  # type: ignore[misc]
@@ -206,6 +271,9 @@ class ManagerApp(ctk.CTk if ctk else object):  # type: ignore[misc]
         if not ctk:
             raise RuntimeError("customtkinter is required to instantiate ManagerApp GUI.")
         super().__init__()
+
+        # Clean up any leftover update artifacts from previous runs
+        cleanup_old_executables()
 
         self.title("LocalTune Manager")
         self.geometry("640x580")
@@ -479,12 +547,7 @@ class ManagerApp(ctk.CTk if ctk else object):  # type: ignore[misc]
         self.status_var.set("Stopping...")
 
         try:
-            self.backend_proc.terminate()
-            try:
-                self.backend_proc.wait(timeout=3.0)
-            except subprocess.TimeoutExpired:
-                self.log("Backend did not stop in time, force-killing...")
-                self.backend_proc.kill()
+            kill_process_tree(self.backend_proc)
             self.log("Backend process stopped.")
         except Exception as e:
             self.log(f"Error stopping backend process: {e}")
@@ -503,13 +566,9 @@ class ManagerApp(ctk.CTk if ctk else object):  # type: ignore[misc]
         if self.backend_proc and self.backend_proc.poll() is None:
             self.status_var.set("Terminating backend...")
             try:
-                self.backend_proc.terminate()
-                self.backend_proc.wait(timeout=3.0)
+                kill_process_tree(self.backend_proc)
             except Exception:
-                try:
-                    self.backend_proc.kill()
-                except Exception:
-                    pass
+                pass
         if hasattr(self, "destroy"):
             self.destroy()
 
