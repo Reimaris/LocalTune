@@ -87,7 +87,7 @@
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                         </button>
                         {% else %}
-                        {% if track.status == 'Completed' and track.file_path %}
+                        {% if track.status == 'Completed' and track.file_path and enable_browser_downloads %}
                         <a href="{{ track.file_path }}" download class="text-[#a1a1aa] hover:text-white transition-colors" title="Download File">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                         </a>
@@ -169,7 +169,7 @@
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                         </button>
                         {% else %}
-                        {% if track.status == 'Completed' and track.file_path %}
+                        {% if track.status == 'Completed' and track.file_path and enable_browser_downloads %}
                         <a href="{{ track.file_path }}" download class="text-[#a1a1aa] hover:text-white transition-colors" title="Download File">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                         </a>

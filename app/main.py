@@ -1,23 +1,25 @@
-import re
-import os
 import asyncio
-from fastapi import FastAPI, Request, Depends, Form, BackgroundTasks, HTTPException
+import os
+import re
+import shutil
+import uuid
+from pathlib import Path
+
+from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
-from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.orm import Session
+from fastapi.templating import Jinja2Templates
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
-from pathlib import Path
-import uuid
-import shutil
-from app.core.logging_config import setup_logging, log_generator
-from app.worker import process_download, process_playlist_sync
-from app.core.downloader import fetch_playlist_title, yt_dlp_sanitize, DOWNLOAD_DIR
+from sqlalchemy.orm import Session
+
+from app.core.downloader import DOWNLOAD_DIR, fetch_playlist_title, yt_dlp_sanitize
+from app.core.logging_config import log_generator, setup_logging
 from app.core.process_registry import download_manager
 from app.core.scheduler import periodic_sync_loop
 from app.db import models
 from app.db.database import engine, get_db
+from app.worker import process_download, process_playlist_sync
 
 # Initialize logging before doing anything else
 logger = setup_logging()
@@ -38,6 +40,17 @@ try:
     with engine.connect() as conn:
         conn.execute(
             text("ALTER TABLE downloads ADD COLUMN synced_playlist_id INTEGER")
+        )
+        conn.commit()
+except OperationalError:
+    pass
+
+try:
+    with engine.connect() as conn:
+        conn.execute(
+            text(
+                "ALTER TABLE settings ADD COLUMN enable_browser_downloads BOOLEAN DEFAULT 0"
+            )
         )
         conn.commit()
 except OperationalError:
@@ -170,6 +183,7 @@ async def update_settings(
     telegram_chat_id: str = Form(""),
     spotify_client_id: str = Form(""),
     spotify_client_secret: str = Form(""),
+    enable_browser_downloads: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     db_settings = db.query(models.Settings).first()
@@ -181,6 +195,7 @@ async def update_settings(
     db_settings.telegram_chat_id = telegram_chat_id
     db_settings.spotify_client_id = spotify_client_id
     db_settings.spotify_client_secret = spotify_client_secret
+    db_settings.enable_browser_downloads = bool(enable_browser_downloads)
     db.commit()
 
     return """
@@ -193,6 +208,8 @@ async def update_settings(
 
 @app.get("/api/tracks", response_class=HTMLResponse)
 async def api_tracks(request: Request, db: Session = Depends(get_db)):
+    settings = db.query(models.Settings).first()
+    enable_browser_downloads = settings.enable_browser_downloads if settings else False
     tracks = (
         db.query(models.Download)
         .filter(models.Download.synced_playlist_id.is_(None))
@@ -287,6 +304,7 @@ async def api_tracks(request: Request, db: Session = Depends(get_db)):
             "queued": queued + downloading,
             "done": done,
             "errors": errors,
+            "enable_browser_downloads": enable_browser_downloads,
         },
     )
 
@@ -302,7 +320,9 @@ async def delete_track(request: Request, track_id: int, db: Session = Depends(ge
                     os.remove(track.file_path)
                 except OSError as e:
                     logger.error(f"Could not delete file {track.file_path}: {e}")
-            if parent_dir != str(DOWNLOAD_DIR) and parent_dir.startswith(str(DOWNLOAD_DIR)):
+            if parent_dir != str(DOWNLOAD_DIR) and parent_dir.startswith(
+                str(DOWNLOAD_DIR)
+            ):
                 try:
                     os.rmdir(parent_dir)
                     logger.info(f"Purged empty playlist folder from disk: {parent_dir}")
@@ -455,7 +475,9 @@ async def soft_delete_job(request: Request, job_id: str, db: Session = Depends(g
     for track in tracks:
         if track.file_path:
             parent_dir = os.path.dirname(track.file_path)
-            if parent_dir != str(DOWNLOAD_DIR) and parent_dir.startswith(str(DOWNLOAD_DIR)):
+            if parent_dir != str(DOWNLOAD_DIR) and parent_dir.startswith(
+                str(DOWNLOAD_DIR)
+            ):
                 folders_to_clean.add(parent_dir)
             if os.path.exists(track.file_path):
                 try:
@@ -496,7 +518,9 @@ async def delete_job(request: Request, job_id: str, db: Session = Depends(get_db
     for track in tracks:
         if track.file_path:
             parent_dir = os.path.dirname(track.file_path)
-            if parent_dir != str(DOWNLOAD_DIR) and parent_dir.startswith(str(DOWNLOAD_DIR)):
+            if parent_dir != str(DOWNLOAD_DIR) and parent_dir.startswith(
+                str(DOWNLOAD_DIR)
+            ):
                 folders_to_clean.add(parent_dir)
             if os.path.exists(track.file_path):
                 try:

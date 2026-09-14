@@ -42,6 +42,24 @@
             </div>
         </div>
 
+        <!-- Remote Access Section -->
+        <div>
+            <h3 class="text-lg font-medium text-white mb-4 border-b border-[#3f3f46] pb-2 mt-8">Remote Access</h3>
+            <div class="flex items-start justify-between gap-4">
+                <div class="space-y-1">
+                    <label class="block text-sm font-medium text-white">Enable In-Browser Downloads</label>
+                    <p class="text-xs text-[#a1a1aa] max-w-lg">
+                        Shows a direct download link next to completed tracks in the history table. Useful when accessing LocalTune remotely from another device, but unnecessary for local desktop usage where files are already saved directly to disk.
+                    </p>
+                </div>
+                <div class="pt-1">
+                    <input type="checkbox" name="enable_browser_downloads" value="true" 
+                        {% if settings.enable_browser_downloads %}checked{% endif %}
+                        class="w-5 h-5 accent-[#d40060] rounded cursor-pointer bg-[#111115] border border-[#3f3f46]">
+                </div>
+            </div>
+        </div>
+
         <div class="pt-4 flex justify-end">
             <button type="submit" class="bg-[#d40060] hover:bg-[#a3004a] text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md shadow-pink-900/20">
                 Save Settings

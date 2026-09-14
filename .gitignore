@@ -8,31 +8,33 @@ venv/
 env/
 ENV/
 
-# Configuration and Database
+# Local databases and dynamic state
+*.db
+*.sqlite
 config/logs/
-config/localtune.db
 test_config/logs/
-test_config/localtune.db
+
+# Environment and Docker overrides
 .env
 compose.override.yaml
 compose.dev.yaml
+compose.test.yaml
 
-# Downloads
+# Downloads & Temp files
 downloads/
-
-# Pytest
-.pytest_cache/
-
-# Temporary Download Files
 *.spotdl
 batch_*.txt
 
-# Agent Context & Local Files (Local only)
-AGENT_INSTRUCTIONS.md
-docs/agent_memory/
-context.md
+# Caches & Test artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 tests/
 test_config/
-compose.test.yaml
 
-.scratch/
+# Agent Governance, Instructions, Memory & Tickets (MUST NEVER BE TRACKED)
+AGENT_INSTRUCTIONS.md
+docs/AGENT_INSTRUCTIONS.md
+docs/agent_memory/
+docs/tickets/
+context.md

@@ -43,6 +43,22 @@ LocalTune is a self-hosted, lightweight web application for managing and downloa
 Simply paste a Spotify Track/Playlist URL or a YouTube Video/Music URL into the Dashboard's input field and click **Download**. 
 LocalTune will queue the job in the background, extract the metadata, cross-reference the local SQLite database, and download any missing MP3s into the `downloads/` directory.
 
+### Custom Download Directory
+By default, LocalTune saves downloads to the `./downloads` directory relative to your `compose.yaml` file. 
+
+If you want downloads saved to an arbitrary folder on your host machine (such as a separate hard drive, external SSD, or existing music library), simply change the volume mount on the left side of `./downloads:/downloads` in `compose.yaml`:
+
+```yaml
+services:
+  localtune:
+    ...
+    volumes:
+      - ./config:/app/config
+      # Replace ./downloads with your desired host path:
+      - /mnt/media/Music:/downloads       # Linux / macOS
+      # - D:/Music:/downloads            # Windows
+```
+
 ## Windows Manager GUI
 
 For Windows users, LocalTune comes with a standalone, dark-themed executable GUI manager (`LocalTune_Manager.exe`). It allows non-technical users to install, start/stop the Docker container, update the app, open the logs, and quickly access downloads without touching the command line.

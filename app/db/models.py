@@ -1,5 +1,7 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
 from datetime import datetime, timezone
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
+
 from app.db.database import Base
 
 
@@ -42,3 +44,4 @@ class Settings(Base):
     telegram_chat_id = Column(String, nullable=True)
     spotify_client_id = Column(String, nullable=True)
     spotify_client_secret = Column(String, nullable=True)
+    enable_browser_downloads = Column(Boolean, default=False, nullable=False)
