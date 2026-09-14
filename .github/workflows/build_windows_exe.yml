@@ -1,4 +1,4 @@
-name: Build Windows Executable
+name: Build Windows Executable & Standalone Bundle
 
 on:
   push:
@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - 'windows_manager/**'
+      - 'app/**'
+      - 'requirements.txt'
       - '.github/workflows/build_windows_exe.yml'
     tags:
       - 'v*'
@@ -14,7 +16,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-windows-exe:
+  build-windows-bundle:
     runs-on: windows-latest
     permissions:
       contents: write
@@ -28,7 +30,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install dependencies
+      - name: Install PyInstaller & Manager Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r windows_manager/requirements.txt
@@ -38,17 +40,67 @@ jobs:
           cd windows_manager
           pyinstaller --noconfirm --onefile --windowed --collect-all customtkinter --icon="icon.ico" --add-data "icon.ico;." --add-data "icon.png;." --name "LocalTune_Manager" localtune_manager.py
 
-      - name: Upload Executable Artifact
+      - name: Create Staging Directory Structure
+        run: |
+          New-Item -ItemType Directory -Force -Path "staging\LocalTune\bin"
+          New-Item -ItemType Directory -Force -Path "staging\LocalTune\runtime"
+          New-Item -ItemType Directory -Force -Path "staging\LocalTune\config\logs"
+          New-Item -ItemType Directory -Force -Path "staging\LocalTune\downloads"
+          Copy-Item "windows_manager\dist\LocalTune_Manager.exe" -Destination "staging\LocalTune\"
+          Copy-Item -Recurse "app" -Destination "staging\LocalTune\"
+          Copy-Item "requirements.txt" -Destination "staging\LocalTune\"
+          Copy-Item "README.md" -Destination "staging\LocalTune\"
+          Copy-Item "LICENSE" -Destination "staging\LocalTune\"
+
+      - name: Download & Provision Embedded Python Runtime
+        run: |
+          Invoke-WebRequest -Uri "https://www.python.org/ftp/python/3.12.9/python-3.12.9-embed-amd64.zip" -OutFile "python-embed.zip"
+          Expand-Archive -Path "python-embed.zip" -DestinationPath "staging\LocalTune\runtime" -Force
+          Remove-Item "python-embed.zip"
+
+          $pthContent = @"
+python312.zip
+.
+Lib/site-packages
+import site
+"@
+          Set-Content -Path "staging\LocalTune\runtime\python312._pth" -Value $pthContent
+          python -m pip install --no-cache-dir -r requirements.txt --target "staging\LocalTune\runtime\Lib\site-packages"
+
+      - name: Download & Provision Bundled External Binaries (ffmpeg & deno)
+        run: |
+          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile "ffmpeg.zip"
+          Expand-Archive -Path "ffmpeg.zip" -DestinationPath "ffmpeg_extracted" -Force
+          $ffmpegExe = Get-ChildItem -Path "ffmpeg_extracted" -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
+          $ffprobeExe = Get-ChildItem -Path "ffmpeg_extracted" -Recurse -Filter "ffprobe.exe" | Select-Object -First 1
+          Copy-Item $ffmpegExe.FullName -Destination "staging\LocalTune\bin\"
+          Copy-Item $ffprobeExe.FullName -Destination "staging\LocalTune\bin\"
+          Remove-Item -Recurse -Force "ffmpeg_extracted", "ffmpeg.zip"
+
+          Invoke-WebRequest -Uri "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip" -OutFile "deno.zip"
+          Expand-Archive -Path "deno.zip" -DestinationPath "deno_extracted" -Force
+          Copy-Item "deno_extracted\deno.exe" -Destination "staging\LocalTune\bin\"
+          Remove-Item -Recurse -Force "deno_extracted", "deno.zip"
+
+      - name: Compress Standalone All-in-One Archive
+        run: |
+          Compress-Archive -Path "staging\LocalTune\*" -DestinationPath "LocalTune-Windows-x64.zip" -Force
+
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: LocalTune_Manager_Windows
-          path: windows_manager/dist/LocalTune_Manager.exe
+          name: LocalTune_Windows_Bundle
+          path: |
+            windows_manager/dist/LocalTune_Manager.exe
+            LocalTune-Windows-x64.zip
           if-no-files-found: error
 
-      - name: Attach Executable to GitHub Release
+      - name: Attach Assets to GitHub Release
         if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: windows_manager/dist/LocalTune_Manager.exe
+          files: |
+            windows_manager/dist/LocalTune_Manager.exe
+            LocalTune-Windows-x64.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

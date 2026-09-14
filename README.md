@@ -10,26 +10,28 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-v2.4.0-pink" alt="Version" />
+  <img src="https://img.shields.io/badge/windows-standalone_ready-purple" alt="Windows Standalone" />
   <img src="https://img.shields.io/badge/docker-ready-blue" alt="Docker Ready" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
 </p>
 
 ---
 
-LocalTune is a self-hosted, lightweight web application for managing and downloading audio tracks from Spotify and YouTube. Built with FastAPI, HTMX, TailwindCSS, and Docker, it offers a beautifully simple interface to securely delta-sync your favorite playlists directly to your local storage.
+LocalTune is a self-hosted, lightweight web application for managing and downloading audio tracks from Spotify and YouTube. Built with FastAPI, HTMX, TailwindCSS, and SQLite, it offers a beautifully simple interface to securely delta-sync your favorite playlists directly to your local storage.
 
 ## Features
 
 - **Spotify & YouTube Support:** Powered by `spotdl` and `yt-dlp`.
 - **Delta-Sync:** Tracks are intelligently checked against a local SQLite database to prevent re-downloading duplicates.
 - **Live Progress Dashboard:** Watch your downloads queue, process, and complete in real-time via seamless HTMX polling.
-- **Host File Permissions:** Background processes automatically fix file permissions so your host machine can effortlessly manage the downloaded MP3s.
+- **Host File Permissions:** Background processes automatically fix file permissions on Linux so your host machine can effortlessly manage the downloaded MP3s.
 - **Telegram Notifications:** Get instantly notified via Telegram when a batch download completes.
 - **Secure Settings:** Configure API keys and Bot Tokens securely via a database-backed Settings panel on the web app.
 
 ## Prerequisites
 
-- **Docker & Docker Compose** must be installed on your host machine.
+- **Windows Desktop:** **Zero prerequisites** — download the all-in-one standalone bundle (`LocalTune-Windows-x64.zip`), extract, and run! No Docker, Python, or Git required.
+- **Linux / NAS / Home Server:** **Docker & Docker Compose** installed on your host machine.
 - (Optional) Telegram Bot Token and Chat ID for notifications.
 - (Optional) Spotify Client ID and Secret for robust playlist extraction.
 
@@ -75,11 +77,11 @@ services:
       # - D:/Music:/downloads            # Windows
 ```
 
-## Windows Manager GUI
+## Windows Standalone Manager GUI
+ 
+For Windows users, LocalTune is available as a self-contained, standalone desktop bundle (`LocalTune-Windows-x64.zip`) featuring a dark-themed GUI manager (`LocalTune_Manager.exe`). It requires **zero prerequisites** (no Docker Desktop, no Python, no Git). Simply unzip and run to start downloading, apply in-place updates, inspect live logs, and access downloads without touching the command line.
 
-For Windows users, LocalTune comes with a standalone, dark-themed executable GUI manager (`LocalTune_Manager.exe`). It allows non-technical users to install, start/stop the Docker container, update the app, open the logs, and quickly access downloads without touching the command line.
-
-**Download & Install:**
+**Download & Install:**  
 👉 **[Read the Complete Windows Installation Guide](WINDOWS_INSTALLATION.md)** for step-by-step instructions.
 
 *(For developers wanting to build the manager from source: Navigate to the `windows_manager` directory and run `build.bat`)*
@@ -87,9 +89,10 @@ For Windows users, LocalTune comes with a standalone, dark-themed executable GUI
 ## Architecture
 
 - **Frontend:** HTML, Vanilla TailwindCSS, HTMX, AlpineJS.
-- **Backend:** Python 3.12, FastAPI, SQLAlchemy (SQLite), FastAPI BackgroundTasks (Single-Container Architecture).
-- **Core Extractors:** `spotdl`, `yt-dlp`.
-- **Windows Helper:** Python 3.12, CustomTkinter (PyInstaller standalone executable).
+- **Backend:** Python 3.12, FastAPI, SQLAlchemy (SQLite), FastAPI BackgroundTasks.
+- **Core Extractors:** `spotdl`, `yt-dlp`, bundled `ffmpeg` & `deno`.
+- **Windows Standalone Bundle:** Python 3.12 embedded runtime, static `ffmpeg` & `deno` binaries, CustomTkinter supervisor GUI (PyInstaller executable).
+- **Containerization (Linux / NAS):** Single-container Docker image hosted on GitHub Container Registry (`ghcr.io/reimaris/localtune:latest`).
 
 ## License
 
