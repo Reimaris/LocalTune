@@ -6,12 +6,15 @@ import sys
 import threading
 import webbrowser
 
-import customtkinter as ctk
-from PIL import Image
+try:
+    import customtkinter as ctk
+    from PIL import Image
 
-# Configure CustomTkinter aesthetic
-ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("blue")
+    ctk.set_appearance_mode("Dark")
+    ctk.set_default_color_theme("blue")
+except ImportError:
+    ctk = None
+    Image = None  # type: ignore[assignment]
 
 
 def get_resource_path(relative_path: str) -> str:
@@ -28,27 +31,89 @@ def get_base_dir() -> str:
 
 
 def get_project_dir() -> str | None:
-    """Locate the LocalTune project root containing compose.yaml or docker-compose.yml."""
+    """Locate the LocalTune project root containing app/main.py."""
     base = get_base_dir()
-    for filename in ("compose.yaml", "docker-compose.yml"):
-        if os.path.exists(os.path.join(base, filename)):
-            return base
-        subfolder = os.path.join(base, "LocalTune")
-        if os.path.exists(os.path.join(subfolder, filename)):
-            return subfolder
+    for candidate in (base, os.path.join(base, "LocalTune")):
+        if os.path.exists(os.path.join(candidate, "app", "main.py")):
+            return candidate
+        # Fallback to docker compose file if app/main.py is absent
+        for compose_name in ("compose.yaml", "docker-compose.yml"):
+            if os.path.exists(os.path.join(candidate, compose_name)):
+                return candidate
     return None
 
 
-class ManagerApp(ctk.CTk):
+def get_python_executable(project_dir: str | None = None) -> str | None:
+    """Discovers python executable in priority order: embedded runtime -> .venv -> system."""
+    if project_dir is None:
+        project_dir = get_project_dir() or get_base_dir()
+
+    # 1. Embedded runtime (All-in-One standalone bundle)
+    runtime_candidates = [
+        os.path.join(project_dir, "runtime", "python.exe"),
+        os.path.join(project_dir, "runtime", "bin", "python"),
+        os.path.join(get_base_dir(), "runtime", "python.exe"),
+    ]
+    for cand in runtime_candidates:
+        if os.path.exists(cand):
+            return cand
+
+    # 2. Local virtual environment (.venv or venv)
+    venv_subdirs = [
+        os.path.join(project_dir, ".venv", "Scripts", "python.exe"),
+        os.path.join(project_dir, ".venv", "bin", "python"),
+        os.path.join(project_dir, "venv", "Scripts", "python.exe"),
+        os.path.join(project_dir, "venv", "bin", "python"),
+    ]
+    for cand in venv_subdirs:
+        if os.path.exists(cand):
+            return cand
+
+    # 3. System python fallback
+    if not getattr(sys, "frozen", False) and sys.executable:
+        return sys.executable
+
+    which_py = shutil.which("python") or shutil.which("python3")
+    if which_py:
+        return which_py
+
+    return None
+
+
+def build_backend_env(project_dir: str | None = None) -> dict[str, str]:
+    """Builds environment variables injecting bundled bin/ and runtime/ into PATH."""
+    if project_dir is None:
+        project_dir = get_project_dir() or get_base_dir()
+
+    env = os.environ.copy()
+    bin_dir = os.path.abspath(os.path.join(project_dir, "bin"))
+    runtime_dir = os.path.abspath(os.path.join(project_dir, "runtime"))
+
+    path_sep = ";" if os.name == "nt" else ":"
+    existing_path = env.get("PATH", "")
+    env["PATH"] = f"{bin_dir}{path_sep}{runtime_dir}{path_sep}{existing_path}"
+    env["PYTHONPATH"] = project_dir
+    env["PYTHONUNBUFFERED"] = "1"
+
+    if "DOWNLOAD_DIR" not in env:
+        env["DOWNLOAD_DIR"] = os.path.join(project_dir, "downloads")
+
+    return env
+
+
+class ManagerApp(ctk.CTk if ctk else object):  # type: ignore[misc]
     def __init__(self):
+        if not ctk:
+            raise RuntimeError("customtkinter is required to instantiate ManagerApp GUI.")
         super().__init__()
 
         self.title("LocalTune Manager")
         self.geometry("640x580")
         self.minsize(580, 480)
 
-        self.q: queue.Queue = queue.Queue()
-        self.is_running_container: bool = False
+        self.q: queue.Queue[tuple[str, str]] = queue.Queue()
+        self.backend_proc: subprocess.Popen[str] | None = None
+        self.is_running: bool = False
         self.is_processing_cmd: bool = False
 
         # Set Window Icon if available
@@ -59,6 +124,9 @@ class ManagerApp(ctk.CTk):
             except (OSError, RuntimeError):
                 pass
 
+        # Handle window close (Clean Termination Protocol)
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
+
         # Main Layout Container
         self.main_frame = ctk.CTkFrame(self, corner_radius=12)
         self.main_frame.pack(fill="both", expand=True, padx=15, pady=15)
@@ -66,7 +134,7 @@ class ManagerApp(ctk.CTk):
         # Title Label with Logo
         icon_png = get_resource_path("icon.png")
         header_image = None
-        if os.path.exists(icon_png):
+        if Image and os.path.exists(icon_png):
             try:
                 pil_img = Image.open(icon_png)
                 header_image = ctk.CTkImage(
@@ -131,12 +199,12 @@ class ManagerApp(ctk.CTk):
         self.after(100, self.process_queue)
 
         # Initial Render
-        self.check_dependencies_and_render()
+        self.render_controls()
 
     def process_queue(self):
         try:
             while True:
-                tag, msg = self.q.get_nowait()
+                _tag, msg = self.q.get_nowait()
                 self.console.configure(state="normal")
                 self.console.insert("end", msg)
                 self.console.see("end")
@@ -148,231 +216,202 @@ class ManagerApp(ctk.CTk):
     def log(self, message: str):
         self.q.put(("info", message + "\n"))
 
-    def check_dependencies_and_render(self):
-        has_git = shutil.which("git") is not None
-        has_docker = shutil.which("docker") is not None
+    def is_backend_active(self) -> bool:
+        """Returns True if the backend child process is currently alive."""
+        return self.backend_proc is not None and self.backend_proc.poll() is None
 
-        # Clear existing button widgets
+    def render_controls(self):
         for widget in self.button_frame.winfo_children():
             widget.destroy()
 
-        if not has_git or not has_docker:
-            self.log("⚠️ Missing dependencies detected!")
-            if not has_git:
-                self.log(" -> Git is not installed or not in PATH.")
-            if not has_docker:
-                self.log(" -> Docker is not installed or not in PATH.")
-
+        project_dir = get_project_dir()
+        if not project_dir:
+            self.log("⚠️ LocalTune source code ('app/main.py') not found in this folder.")
             warn_lbl = ctk.CTkLabel(
                 self.button_frame,
-                text="Missing required system dependencies for LocalTune.",
+                text="LocalTune application source is missing.",
                 font=ctk.CTkFont(size=13, weight="bold"),
                 text_color="#ff5555",
             )
-            warn_lbl.grid(row=0, column=0, columnspan=2, pady=5)
-
-            if not has_git:
-                ctk.CTkButton(
-                    self.button_frame,
-                    text="Download Git",
-                    fg_color="#3b82f6",
-                    hover_color="#2563eb",
-                    command=lambda: webbrowser.open("https://git-scm.com/downloads"),
-                ).grid(row=1, column=0, padx=5, pady=5)
-            if not has_docker:
-                ctk.CTkButton(
-                    self.button_frame,
-                    text="Download Docker",
-                    fg_color="#3b82f6",
-                    hover_color="#2563eb",
-                    command=lambda: webbrowser.open(
-                        "https://www.docker.com/products/docker-desktop/"
-                    ),
-                ).grid(row=1, column=1, padx=5, pady=5)
-
-            ctk.CTkButton(
-                self.button_frame,
-                text="Refresh Dependencies",
-                fg_color="#4b5563",
-                hover_color="#374151",
-                command=self.check_dependencies_and_render,
-            ).grid(row=2, column=0, columnspan=2, pady=10)
+            warn_lbl.pack(pady=10)
             return
 
-        project_dir = get_project_dir()
-        if not project_dir:
-            self.log("LocalTune repository is not installed in current folder.")
-            ctk.CTkButton(
+        python_exe = get_python_executable(project_dir)
+        if not python_exe:
+            self.log("⚠️ Python runtime not found. Ensure 'runtime/' folder or Python is installed.")
+            warn_lbl = ctk.CTkLabel(
                 self.button_frame,
-                text="Install LocalTune",
-                font=ctk.CTkFont(size=14, weight="bold"),
+                text="Python runtime not found.",
+                font=ctk.CTkFont(size=13, weight="bold"),
+                text_color="#ff5555",
+            )
+            warn_lbl.pack(pady=10)
+            return
+
+        self.button_frame.grid_columnconfigure((0, 1, 2), weight=1)
+
+        # Dynamic Start / Stop Toggle Button
+        if self.is_backend_active():
+            self.toggle_btn = ctk.CTkButton(
+                self.button_frame,
+                text="⏹️ Stop LocalTune",
+                font=ctk.CTkFont(weight="bold"),
+                fg_color="#ef4444",
+                hover_color="#dc2626",
+                command=self.stop_backend,
+            )
+        else:
+            self.toggle_btn = ctk.CTkButton(
+                self.button_frame,
+                text="▶️ Start LocalTune",
+                font=ctk.CTkFont(weight="bold"),
                 fg_color="#10b981",
                 hover_color="#059669",
-                command=self.install_localtune,
-            ).pack(pady=10)
-        else:
-            self.button_frame.grid_columnconfigure((0, 1, 2), weight=1)
+                command=self.start_backend,
+            )
+        self.toggle_btn.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
 
-            # Dynamic Toggle Button for Docker Container State
-            if self.is_running_container:
-                self.toggle_btn = ctk.CTkButton(
-                    self.button_frame,
-                    text="⏹️ Stop LocalTune",
-                    font=ctk.CTkFont(weight="bold"),
-                    fg_color="#ef4444",
-                    hover_color="#dc2626",
-                    command=self.toggle_docker,
-                )
-            else:
-                self.toggle_btn = ctk.CTkButton(
-                    self.button_frame,
-                    text="▶️ Start LocalTune",
-                    font=ctk.CTkFont(weight="bold"),
-                    fg_color="#10b981",
-                    hover_color="#059669",
-                    command=self.toggle_docker,
-                )
-            self.toggle_btn.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+        # Open Dashboard Button
+        ctk.CTkButton(
+            self.button_frame,
+            text="🌐 Open Dashboard",
+            command=self.open_dashboard,
+        ).grid(row=0, column=1, padx=5, pady=5, sticky="ew")
 
-            # Open Dashboard Button
-            ctk.CTkButton(
-                self.button_frame,
-                text="🌐 Open Dashboard",
-                command=self.open_dashboard,
-            ).grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        # Update Button
+        ctk.CTkButton(
+            self.button_frame,
+            text="🔄 Update LocalTune",
+            fg_color="#8b5cf6",
+            hover_color="#7c3aed",
+            command=self.update_localtune,
+        ).grid(row=0, column=2, padx=5, pady=5, sticky="ew")
 
-            # Update Button
-            ctk.CTkButton(
-                self.button_frame,
-                text="🔄 Update LocalTune",
-                fg_color="#8b5cf6",
-                hover_color="#7c3aed",
-                command=self.update_localtune,
-            ).grid(row=0, column=2, padx=5, pady=5, sticky="ew")
+        # Open Downloads Button
+        ctk.CTkButton(
+            self.button_frame,
+            text="📁 Open Downloads",
+            fg_color="#4b5563",
+            hover_color="#374151",
+            command=lambda: self.open_folder("downloads"),
+        ).grid(row=1, column=0, padx=5, pady=5, sticky="ew")
 
-            # Open Downloads Button
-            ctk.CTkButton(
-                self.button_frame,
-                text="📁 Open Downloads",
-                fg_color="#4b5563",
-                hover_color="#374151",
-                command=lambda: self.open_folder("downloads"),
-            ).grid(row=1, column=0, padx=5, pady=5, sticky="ew")
+        # Open Logs Button
+        ctk.CTkButton(
+            self.button_frame,
+            text="📄 Open Logs",
+            fg_color="#4b5563",
+            hover_color="#374151",
+            command=lambda: self.open_folder("config/logs"),
+        ).grid(row=1, column=1, padx=5, pady=5, sticky="ew")
 
-            # Open Logs Button
-            ctk.CTkButton(
-                self.button_frame,
-                text="📄 Open Logs",
-                fg_color="#4b5563",
-                hover_color="#374151",
-                command=lambda: self.open_folder("config/logs"),
-            ).grid(row=1, column=1, padx=5, pady=5, sticky="ew")
+        # Refresh / Check Status Button
+        ctk.CTkButton(
+            self.button_frame,
+            text="🔄 Refresh Status",
+            fg_color="#4b5563",
+            hover_color="#374151",
+            command=self.render_controls,
+        ).grid(row=1, column=2, padx=5, pady=5, sticky="ew")
 
-            # Async container status update in background
-            if not self.is_processing_cmd:
-                threading.Thread(
-                    target=self.detect_container_status, daemon=True
-                ).start()
-
-    def detect_container_status(self):
-        """Asynchronously check if LocalTune Docker container is currently active."""
-        project_dir = get_project_dir()
-        if not project_dir:
+    def start_backend(self):
+        """Starts the FastAPI uvicorn backend as a managed background child process."""
+        if self.is_backend_active():
             return
 
+        project_dir = get_project_dir() or get_base_dir()
+        python_exe = get_python_executable(project_dir)
+        if not python_exe:
+            self.log("Error: Cannot start backend, Python executable not found.")
+            return
+
+        port = os.environ.get("LOCALTUNE_PORT", "8000").strip()
+        if not port or not port.isdigit():
+            port = "8000"
+
+        cmd = [python_exe, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", port]
+        env = build_backend_env(project_dir)
+        creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+
+        self.log(f"Starting LocalTune backend on 127.0.0.1:{port}...")
+        self.status_var.set("Starting backend...")
+
         try:
-            creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-            result = subprocess.run(
-                ["docker", "compose", "ps", "--services", "--filter", "status=running"],
+            self.backend_proc = subprocess.Popen(
+                cmd,
                 cwd=project_dir,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=env,
                 creationflags=creationflags,
             )
-            is_running = bool(result.stdout and result.stdout.strip())
-            if is_running != self.is_running_container:
-                self.is_running_container = is_running
-                self.after(0, self.check_dependencies_and_render)
-        except Exception:
-            pass
 
-    def run_command(
-        self,
-        cmd_list: list[str],
-        cwd: str | None = None,
-        success_msg: str = "Completed successfully.",
-        on_complete_callback=None,
-    ):
-        if cwd is None:
-            cwd = get_project_dir() or get_base_dir()
-
-        def target():
-            self.is_processing_cmd = True
-            self.status_var.set("Running command...")
-            self.log(f"\n> {' '.join(cmd_list)}")
-            try:
-                creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-                process = subprocess.Popen(
-                    cmd_list,
-                    cwd=cwd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    creationflags=creationflags,
-                )
-
-                if process.stdout:
-                    for line in process.stdout:
+            # Spawn daemon thread to stream backend stdout/stderr to GUI console
+            def log_reader(proc: subprocess.Popen[str]):
+                if proc.stdout:
+                    for line in iter(proc.stdout.readline, ""):
                         self.q.put(("cmd", line))
+                proc.wait()
+                self.after(0, self.on_backend_exit)
 
-                process.wait()
-                if process.returncode == 0:
-                    self.log(success_msg)
-                else:
-                    self.log(f"Process exited with code {process.returncode}")
-            except Exception as e:
-                self.log(f"Error executing command: {e}")
-            finally:
-                self.is_processing_cmd = False
-                self.status_var.set("Ready")
-                if on_complete_callback:
-                    on_complete_callback()
-                self.after(0, self.check_dependencies_and_render)
+            threading.Thread(target=log_reader, args=(self.backend_proc,), daemon=True).start()
 
-        threading.Thread(target=target, daemon=True).start()
+            self.status_var.set(f"Running (Port {port})")
+            self.after(500, self.render_controls)
+        except Exception as e:
+            self.log(f"Failed to start backend process: {e}")
+            self.status_var.set("Error starting backend")
+            self.render_controls()
 
-    def install_localtune(self):
-        base = get_base_dir()
-        self.run_command(
-            ["git", "clone", "https://github.com/Reimaris/LocalTune.git"],
-            cwd=base,
-            success_msg="Installation complete! You can now start LocalTune.",
-        )
+    def stop_backend(self):
+        """Gracefully terminates the backend process."""
+        if not self.is_backend_active() or not self.backend_proc:
+            self.render_controls()
+            return
 
-    def toggle_docker(self):
-        if self.is_running_container:
-            self.log("Stopping LocalTune container...")
-            self.run_command(
-                ["docker", "compose", "down"],
-                success_msg="LocalTune container stopped.",
-                on_complete_callback=lambda: setattr(
-                    self, "is_running_container", False
-                ),
-            )
-        else:
-            self.log("Starting LocalTune container...")
-            self.run_command(
-                ["docker", "compose", "up", "-d"],
-                success_msg="LocalTune container started successfully!",
-                on_complete_callback=lambda: setattr(
-                    self, "is_running_container", True
-                ),
-            )
+        self.log("Stopping LocalTune backend...")
+        self.status_var.set("Stopping...")
+
+        try:
+            self.backend_proc.terminate()
+            try:
+                self.backend_proc.wait(timeout=3.0)
+            except subprocess.TimeoutExpired:
+                self.log("Backend did not stop in time, force-killing...")
+                self.backend_proc.kill()
+            self.log("Backend process stopped.")
+        except Exception as e:
+            self.log(f"Error stopping backend process: {e}")
+        finally:
+            self.backend_proc = None
+            self.status_var.set("Stopped")
+            self.render_controls()
+
+    def on_backend_exit(self):
+        """Callback invoked when backend process terminates."""
+        self.status_var.set("Stopped")
+        self.render_controls()
+
+    def on_close(self):
+        """Handles WM_DELETE_WINDOW: cleanly terminates backend process before exiting."""
+        if self.backend_proc and self.backend_proc.poll() is None:
+            self.status_var.set("Terminating backend...")
+            try:
+                self.backend_proc.terminate()
+                self.backend_proc.wait(timeout=3.0)
+            except Exception:
+                try:
+                    self.backend_proc.kill()
+                except Exception:
+                    pass
+        if hasattr(self, "destroy"):
+            self.destroy()
 
     def open_dashboard(self):
-        port = os.environ.get("LOCALTUNE_PORT", "").strip()
+        port = os.environ.get("LOCALTUNE_PORT", "8000").strip()
         if not port or not port.isdigit():
             port = "8000"
         url = f"http://127.0.0.1:{port}"
@@ -380,10 +419,7 @@ class ManagerApp(ctk.CTk):
         webbrowser.open(url)
 
     def open_folder(self, folder_path: str):
-        project_dir = get_project_dir()
-        if not project_dir:
-            return
-
+        project_dir = get_project_dir() or get_base_dir()
         parts = folder_path.split("/")
         target_path = os.path.join(project_dir, *parts)
 
@@ -395,8 +431,8 @@ class ManagerApp(ctk.CTk):
                 return
 
         try:
-            if os.name == "nt":
-                os.startfile(target_path)
+            if hasattr(os, "startfile"):
+                os.startfile(target_path)  # type: ignore[attr-defined]
             else:
                 opener = "open" if sys.platform == "darwin" else "xdg-open"
                 subprocess.call([opener, target_path])
@@ -405,79 +441,14 @@ class ManagerApp(ctk.CTk):
             self.log(f"Failed to open folder: {e}")
 
     def update_localtune(self):
-        def target():
-            self.is_processing_cmd = True
-            self.status_var.set("Updating...")
-            cwd = get_project_dir()
-            creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-
-            env = os.environ.copy()
-            env["BUILDKIT_PROGRESS"] = "plain"
-
-            try:
-                self.log("\n> git pull")
-                p1 = subprocess.Popen(
-                    ["git", "pull"],
-                    cwd=cwd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    creationflags=creationflags,
-                )
-                if p1.stdout:
-                    for line in p1.stdout:
-                        self.q.put(("cmd", line))
-                p1.wait()
-
-                self.log("\n> docker compose pull")
-                p2 = subprocess.Popen(
-                    ["docker", "compose", "pull"],
-                    cwd=cwd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    env=env,
-                    creationflags=creationflags,
-                )
-                if p2.stdout:
-                    for line in p2.stdout:
-                        self.q.put(("cmd", line))
-                p2.wait()
-
-                self.log("\n> docker compose up -d")
-                p3 = subprocess.Popen(
-                    ["docker", "compose", "up", "-d"],
-                    cwd=cwd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    env=env,
-                    creationflags=creationflags,
-                )
-                if p3.stdout:
-                    for line in p3.stdout:
-                        self.q.put(("cmd", line))
-                p3.wait()
-
-                self.is_running_container = True
-                self.log("LocalTune update completed successfully!")
-            except Exception as e:
-                self.log(f"Error during update: {e}")
-            finally:
-                self.is_processing_cmd = False
-                self.status_var.set("Ready")
-                self.after(0, self.check_dependencies_and_render)
-
-        threading.Thread(target=target, daemon=True).start()
+        self.log("Checking for updates...")
+        # Note: Hybrid auto-update flow is implemented in Ticket 03
 
 
 def main():
+    if not ctk:
+        print("customtkinter is required to run LocalTune Manager GUI.")
+        sys.exit(1)
     app = ManagerApp()
     app.mainloop()
 
