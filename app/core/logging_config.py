@@ -1,6 +1,6 @@
+import asyncio
 import logging
 import sys
-import asyncio
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 

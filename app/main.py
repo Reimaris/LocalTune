@@ -69,7 +69,7 @@ async def startup_event():
 BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
-downloads_dir = os.getenv("DOWNLOAD_DIR", "/downloads")
+downloads_dir = str(DOWNLOAD_DIR)
 try:
     os.makedirs(downloads_dir, exist_ok=True)
     app.mount("/downloads", StaticFiles(directory=downloads_dir), name="downloads")

@@ -1,0 +1,8 @@
+[lint]
+ignore = [
+    "B008",    # FastAPI Depends in parameter defaults
+    "BLE001",  # Broad exception catches
+    "PLW1510", # subprocess.run check parameter
+    "G201",    # logger.error with exc_info=True
+    "S110",    # try-except-pass
+]

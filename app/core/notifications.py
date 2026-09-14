@@ -1,8 +1,10 @@
-import httpx
 import logging
+
+import httpx
+
 from app.core.config import settings
-from app.db.database import SessionLocal
 from app.db import models
+from app.db.database import SessionLocal
 
 logger = logging.getLogger(__name__)
 

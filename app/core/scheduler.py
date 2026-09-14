@@ -1,8 +1,9 @@
 import asyncio
 import logging
-from app.db.database import SessionLocal
-from app.db import models
+
 from app.core.downloader import sync_playlist_job
+from app.db import models
+from app.db.database import SessionLocal
 
 logger = logging.getLogger(__name__)
 

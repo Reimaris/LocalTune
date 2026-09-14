@@ -16,8 +16,25 @@ from app.core.process_registry import cleanup_partial_files, download_manager
 from app.db import models
 
 logger = logging.getLogger(__name__)
+def get_download_dir() -> Path:
+    env_dir = os.getenv("DOWNLOAD_DIR")
+    if env_dir:
+        return Path(env_dir).resolve()
+    if os.path.isdir("/downloads"):
+        return Path("/downloads").resolve()
+    return Path("./downloads").resolve()
 
-DOWNLOAD_DIR = Path(os.getenv("DOWNLOAD_DIR", "/downloads"))
+
+DOWNLOAD_DIR = get_download_dir()
+
+
+def get_subprocess_creationflags() -> int:
+    if os.name == "nt":
+        return getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+    return 0
+
+
+SUBPROCESS_CREATIONFLAGS: int = get_subprocess_creationflags()
 
 
 def check_exists(db: Session, track_id: str) -> bool:
@@ -96,6 +113,8 @@ def insert_download(
 
 def fix_permissions(path: Path):
     """Recursively apply open permissions so the host can read/write/delete."""
+    if os.name == "nt":
+        return
     try:
         os.chmod(path, 0o777)
         for root, dirs, files in os.walk(path):
@@ -149,7 +168,12 @@ def handle_spotify(
         )
         try:
             subprocess.run(
-                cmd, check=True, capture_output=True, text=True, timeout=3600
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=3600,
+                creationflags=SUBPROCESS_CREATIONFLAGS,
             )
         except subprocess.CalledProcessError as e:
             error_output = (
@@ -224,9 +248,9 @@ def handle_spotify(
             sanitized_list_name = spotdl_sanitize(list_name) if list_name else ""
 
             file_path = (
-                f"/downloads/{sanitized_list_name}/{sanitized_artist} - {sanitized_title}.{file_format}"
+                f"{DOWNLOAD_DIR}/{sanitized_list_name}/{sanitized_artist} - {sanitized_title}.{file_format}"
                 if list_name
-                else f"/downloads/{sanitized_artist} - {sanitized_title}.{file_format}"
+                else f"{DOWNLOAD_DIR}/{sanitized_artist} - {sanitized_title}.{file_format}"
             )
 
             # Write single-track temp file for spotdl
@@ -242,9 +266,9 @@ def handle_spotify(
                     "extractor-args=youtube:player_client=android,web,ios",
                     track_temp_file,
                     "--output",
-                    f"/downloads/{{list-name}}/{{artist}} - {{title}}.{file_format}"
+                    f"{DOWNLOAD_DIR}/{{list-name}}/{{artist}} - {{title}}.{file_format}"
                     if list_name
-                    else f"/downloads/{{artist}} - {{title}}.{file_format}",
+                    else f"{DOWNLOAD_DIR}/{{artist}} - {{title}}.{file_format}",
                     "--format",
                     file_format,
                 ]
@@ -253,7 +277,11 @@ def handle_spotify(
             aborted = False
             try:
                 proc = subprocess.Popen(
-                    cmd_dl, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                    cmd_dl,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    creationflags=SUBPROCESS_CREATIONFLAGS,
                 )
                 if is_on_demand:
                     download_manager.register_process(job_id, track_id, proc)
@@ -352,6 +380,7 @@ def handle_ytdlp(
             check=True,
             capture_output=True,
             text=True,
+            creationflags=SUBPROCESS_CREATIONFLAGS,
         )
 
         # Delete placeholder now that we have real metadata
@@ -424,9 +453,9 @@ def handle_ytdlp(
             sanitized_title = yt_dlp_sanitize(title)
 
             file_path = (
-                f"/downloads/{sanitized_playlist_title}/{sanitized_title}.{file_format}"
+                f"{DOWNLOAD_DIR}/{sanitized_playlist_title}/{sanitized_title}.{file_format}"
                 if is_playlist
-                else f"/downloads/{sanitized_title}.{file_format}"
+                else f"{DOWNLOAD_DIR}/{sanitized_title}.{file_format}"
             )
 
             # Resolve canonical URL for this track
@@ -439,9 +468,9 @@ def handle_ytdlp(
 
             # Build the yt-dlp download command for this single track
             output_tmpl = (
-                f"/downloads/{sanitized_playlist_title}/%(title)s.%(ext)s"
+                f"{DOWNLOAD_DIR}/{sanitized_playlist_title}/%(title)s.%(ext)s"
                 if is_playlist and sanitized_playlist_title
-                else "/downloads/%(title)s.%(ext)s"
+                else f"{DOWNLOAD_DIR}/%(title)s.%(ext)s"
             )
             cmd_dl = ["yt-dlp", "--ignore-errors"]
             if is_youtube:
@@ -490,7 +519,11 @@ def handle_ytdlp(
             aborted = False
             try:
                 proc = subprocess.Popen(
-                    cmd_dl, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                    cmd_dl,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    creationflags=SUBPROCESS_CREATIONFLAGS,
                 )
                 if is_on_demand:
                     download_manager.register_process(job_id, track_id, proc)
@@ -598,7 +631,14 @@ def fetch_playlist_title(url: str, db: Session | None = None) -> tuple[str, bool
                         str(settings.spotify_client_secret).strip(),
                     ]
             cmd = ["spotdl"] + auth_args + ["save", url, "--save-file", temp_file]
-            subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
+            subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                creationflags=SUBPROCESS_CREATIONFLAGS,
+            )
             with open(temp_file, "r") as f:
                 data = json.load(f)
             if data and isinstance(data, list):
@@ -629,7 +669,12 @@ def fetch_playlist_title(url: str, db: Session | None = None) -> tuple[str, bool
                     url,
                 ]
             result = subprocess.run(
-                cmd, check=True, capture_output=True, text=True, timeout=120
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                creationflags=SUBPROCESS_CREATIONFLAGS,
             )
             data = json.loads(result.stdout)
             title = data.get("title") or data.get("playlist_title") or "Synced Playlist"
@@ -648,14 +693,14 @@ def sync_playlist_job(synced_playlist_id: int, db: Session) -> dict:
         .filter(models.SyncedPlaylist.id == synced_playlist_id)
         .first()
     )
-    if not sp or not sp.is_active:
-        return {"status": "skipped", "message": "Playlist not found or paused"}
+    if not sp or not sp.is_active or not sp.url:
+        return {"status": "skipped", "message": "Playlist not found, paused, or missing URL"}
 
     sp.status = "Syncing"
     db.commit()
 
     job_id = uuid.uuid4().hex
-    url = sp.url
+    url: str = sp.url
     is_spotify = bool(re.search(r"(spotify\.com)", url))
 
     try:
@@ -679,7 +724,12 @@ def sync_playlist_job(synced_playlist_id: int, db: Session) -> dict:
                     ]
                 cmd = ["spotdl"] + auth_args + ["save", url, "--save-file", temp_file]
                 subprocess.run(
-                    cmd, check=False, capture_output=True, text=True, timeout=1200
+                    cmd,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=1200,
+                    creationflags=SUBPROCESS_CREATIONFLAGS,
                 )
                 if os.path.exists(temp_file):
                     with open(temp_file, "r") as f:
@@ -716,7 +766,12 @@ def sync_playlist_job(synced_playlist_id: int, db: Session) -> dict:
                 )
             cmd.extend(["-J", "--flat-playlist", url])
             result = subprocess.run(
-                cmd, check=True, capture_output=True, text=True, timeout=1200
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=1200,
+                creationflags=SUBPROCESS_CREATIONFLAGS,
             )
             data = json.loads(result.stdout)
             extractor = data.get("extractor_key") or data.get("extractor") or "ytdlp"
