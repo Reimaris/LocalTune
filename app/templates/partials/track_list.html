@@ -71,32 +71,32 @@
                     </td>
                     <td class="px-6 py-4 break-words text-[#a1a1aa]">{{ track.artist }}</td>
                     <td class="px-6 py-4">{{ status_badge(track.status) }}</td>
-                    <td class="px-6 py-4 whitespace-nowrap flex justify-end gap-3">
+                    <td class="px-6 py-4 whitespace-nowrap flex justify-end items-center gap-1.5">
                         {% if track.status in ['Queued', 'Downloading'] %}
-                        <button class="text-amber-400 hover:text-amber-300 transition-colors" title="Abort Download"
+                        <button class="p-1.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-[#3f3f46] transition-colors" title="Abort Download"
                             hx-post="/api/tracks/{{ track.id }}/abort"
                             hx-target="#tracks-table-container"
                             hx-swap="innerHTML">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                         </button>
                         {% elif track.status == 'Deleted' %}
-                        <button class="text-[#a1a1aa] hover:text-white transition-colors" title="Dismiss / Clear from History" 
+                        <button class="p-1.5 rounded-lg text-[#a1a1aa] hover:text-white hover:bg-[#3f3f46] transition-colors" title="Dismiss / Clear from History" 
                             hx-delete="/api/tracks/{{ track.id }}" 
                             hx-target="closest tr" 
                             hx-swap="outerHTML">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                         </button>
                         {% else %}
                         {% if track.status == 'Completed' and track.file_path and enable_browser_downloads %}
-                        <a href="{{ track.file_path }}" download class="text-[#a1a1aa] hover:text-white transition-colors" title="Download File">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        <a href="{{ track.file_path }}" download class="p-1.5 rounded-lg text-[#a1a1aa] hover:text-white hover:bg-[#3f3f46] transition-colors inline-flex items-center justify-center" title="Download File">
+                            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                         </a>
                         {% endif %}
-                        <button class="text-[#a1a1aa] hover:text-red-500 transition-colors" title="Delete Track" 
+                        <button class="p-1.5 rounded-lg text-[#a1a1aa] hover:text-red-500 hover:bg-[#3f3f46] transition-colors" title="Delete Track" 
                             hx-post="/api/tracks/{{ track.id }}/delete" 
                             hx-target="#tracks-table-container" 
                             hx-swap="innerHTML">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                         </button>
                         {% endif %}
                     </td>
@@ -116,30 +116,30 @@
                     </td>
                     <td class="px-6 py-4 text-[#a1a1aa]">Playlist</td>
                     <td class="px-6 py-4">{{ status_badge(item.status) }}</td>
-                    <td class="px-6 py-4 whitespace-nowrap flex justify-end gap-3">
+                    <td class="px-6 py-4 whitespace-nowrap flex justify-end items-center gap-1.5">
                         {% if item.status in ['Downloading', 'Queued'] %}
-                        <button class="text-amber-400 hover:text-amber-300 transition-colors" title="Abort Playlist Download"
+                        <button class="p-1.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-[#3f3f46] transition-colors" title="Abort Playlist Download"
                             hx-post="/api/jobs/{{ item.job_id }}/abort"
                             @click.stop
                             hx-target="#tracks-table-container"
                             hx-swap="innerHTML">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                         </button>
                         {% elif item.status == 'Deleted' %}
-                        <button class="text-[#a1a1aa] hover:text-white transition-colors" title="Dismiss Playlist from History"
+                        <button class="p-1.5 rounded-lg text-[#a1a1aa] hover:text-white hover:bg-[#3f3f46] transition-colors" title="Dismiss Playlist from History"
                             hx-delete="/api/jobs/{{ item.job_id }}"
                             @click.stop
                             hx-target="#tracks-table-container"
                             hx-swap="innerHTML">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                         </button>
                         {% else %}
-                        <button class="text-[#a1a1aa] hover:text-red-500 transition-colors" title="Delete Playlist"
+                        <button class="p-1.5 rounded-lg text-[#a1a1aa] hover:text-red-500 hover:bg-[#3f3f46] transition-colors" title="Delete Playlist"
                             hx-post="/api/jobs/{{ item.job_id }}/delete"
                             @click.stop
                             hx-target="#tracks-table-container"
                             hx-swap="innerHTML">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                         </button>
                         {% endif %}
                     </td>
@@ -153,32 +153,32 @@
                     </td>
                     <td class="px-6 py-4 break-words text-[#a1a1aa]">{{ track.artist }}</td>
                     <td class="px-6 py-4">{{ status_badge(track.status) }}</td>
-                    <td class="px-6 py-4 whitespace-nowrap flex justify-end gap-3">
+                    <td class="px-6 py-4 whitespace-nowrap flex justify-end items-center gap-1.5">
                         {% if track.status in ['Queued', 'Downloading'] %}
-                        <button class="text-amber-400 hover:text-amber-300 transition-colors" title="Abort Download"
+                        <button class="p-1.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-[#3f3f46] transition-colors" title="Abort Download"
                             hx-post="/api/tracks/{{ track.id }}/abort"
                             hx-target="#tracks-table-container"
                             hx-swap="innerHTML">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                         </button>
                         {% elif track.status == 'Deleted' %}
-                        <button class="text-[#a1a1aa] hover:text-white transition-colors" title="Dismiss / Clear from History" 
+                        <button class="p-1.5 rounded-lg text-[#a1a1aa] hover:text-white hover:bg-[#3f3f46] transition-colors" title="Dismiss / Clear from History" 
                             hx-delete="/api/tracks/{{ track.id }}" 
                             hx-target="closest tr" 
                             hx-swap="outerHTML">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                         </button>
                         {% else %}
                         {% if track.status == 'Completed' and track.file_path and enable_browser_downloads %}
-                        <a href="{{ track.file_path }}" download class="text-[#a1a1aa] hover:text-white transition-colors" title="Download File">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        <a href="{{ track.file_path }}" download class="p-1.5 rounded-lg text-[#a1a1aa] hover:text-white hover:bg-[#3f3f46] transition-colors inline-flex items-center justify-center" title="Download File">
+                            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                         </a>
                         {% endif %}
-                        <button class="text-[#a1a1aa] hover:text-red-500 transition-colors" title="Delete Track" 
+                        <button class="p-1.5 rounded-lg text-[#a1a1aa] hover:text-red-500 hover:bg-[#3f3f46] transition-colors" title="Delete Track" 
                             hx-post="/api/tracks/{{ track.id }}/delete" 
                             hx-target="#tracks-table-container" 
                             hx-swap="innerHTML">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                         </button>
                         {% endif %}
                     </td>

@@ -25,11 +25,11 @@
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
         <div class="flex items-center gap-2 bg-[#24242b] p-1.5 rounded-xl border border-[#3f3f46] shadow-md">
             <button @click="activeFeature = 'on-demand'; localStorage.setItem('localtune_tab', 'on-demand')" :class="activeFeature === 'on-demand' ? 'bg-[#d40060] text-white shadow-md' : 'text-[#a1a1aa] hover:text-white'" class="px-5 py-2 rounded-lg font-bold text-sm transition-all duration-200 flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                 On-Demand Download
             </button>
             <button @click="activeFeature = 'synced-playlists'; localStorage.setItem('localtune_tab', 'synced-playlists')" :class="activeFeature === 'synced-playlists' ? 'bg-[#d40060] text-white shadow-md' : 'text-[#a1a1aa] hover:text-white'" class="px-5 py-2 rounded-lg font-bold text-sm transition-all duration-200 flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                 Synced Playlists
             </button>
         </div>
@@ -72,7 +72,7 @@
                         <button type="submit" name="media_type" value="audio"
                             @click="fileFormat = audioFormat"
                             class="bg-[#d40060] hover:bg-[#a3004a] text-white font-bold py-3 px-4 sm:px-5 transition-colors shadow-md whitespace-nowrap flex items-center gap-2 rounded-l-lg">
-                            <svg class="w-5 h-5 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
+                            <svg class="w-5 h-5 shrink-0 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
                             Music
                         </button>
 
@@ -82,7 +82,7 @@
                                 @click="open = !open" @click.away="open = false"
                                 class="bg-[#b30052] hover:bg-[#8a003f] text-white px-3 py-3 border-l border-[#d40060]/50 rounded-r-lg flex items-center gap-1 text-sm font-medium transition-colors whitespace-nowrap">
                                 <span x-text="audioFormat"></span>
-                                <svg class="w-3 h-3 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                                <svg class="w-3 h-3 shrink-0 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
                             </button>
                             <div x-show="open" x-transition class="absolute top-full left-0 mt-1 bg-[#24242b] border border-[#3f3f46] rounded-lg shadow-lg overflow-hidden z-10 w-20" style="display: none;">
                                 <button type="button" @click="audioFormat = 'mp3'; fileFormat = 'mp3'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm">mp3</button>
@@ -100,7 +100,7 @@
                             @click="fileFormat = videoFormat"
                             :disabled="url.includes('spotify.com')"
                             class="bg-[#007acc] hover:bg-[#005c99] text-white font-bold py-3 px-4 sm:px-5 transition-colors shadow-md whitespace-nowrap flex items-center gap-2 rounded-l-lg">
-                            <svg class="w-5 h-5 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                            <svg class="w-5 h-5 shrink-0 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                             Video
                         </button>
 
@@ -110,7 +110,7 @@
                                 @click="open = !open" @click.away="open = false"
                                 class="bg-[#005c99] hover:bg-[#004d80] text-white px-3 py-3 border-l border-[#007acc]/50 flex items-center gap-1 text-sm font-medium transition-colors whitespace-nowrap">
                                 <span x-text="videoFormat"></span>
-                                <svg class="w-3 h-3 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                                <svg class="w-3 h-3 shrink-0 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
                             </button>
                             <div x-show="open" x-transition class="absolute top-full left-0 mt-1 bg-[#24242b] border border-[#3f3f46] rounded-lg shadow-lg overflow-hidden z-10 w-20" style="display: none;">
                                 <button type="button" @click="videoFormat = 'mkv'; fileFormat = 'mkv'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm">mkv</button>
@@ -124,7 +124,7 @@
                                 @click="open = !open" @click.away="open = false"
                                 class="bg-[#004d80] hover:bg-[#003d66] text-white px-3 py-3 border-l border-[#007acc]/30 flex items-center gap-1 text-sm font-medium transition-colors whitespace-nowrap">
                                 <span x-text="resolutionCap === 'best' ? 'Best' : resolutionCap + 'p'"></span>
-                                <svg class="w-3 h-3 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                                <svg class="w-3 h-3 shrink-0 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
                             </button>
                             <div x-show="open" x-transition class="absolute top-full right-0 mt-1 bg-[#24242b] border border-[#3f3f46] rounded-lg shadow-lg overflow-hidden z-10 w-36" style="display: none;">
                                 <button type="button" @click="resolutionCap = 'best'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm" :class="resolutionCap === 'best' ? 'text-[#38bdf8]' : ''">Best (Max)</button>
@@ -139,7 +139,7 @@
                         <div class="relative flex group">
                             <button type="button"
                                 class="bg-[#003d66] hover:bg-[#002e4d] text-[#a1a1aa] hover:text-white px-2 py-3 border-l border-[#007acc]/30 rounded-r-lg flex items-center justify-center transition-colors">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                             </button>
                             <!-- Tooltip Content -->
                             <div class="absolute top-full right-0 mt-2 w-56 p-3 bg-[#1e1e24] border border-[#3f3f46] rounded-lg shadow-xl text-xs text-[#d4d4d8] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-20 pointer-events-none">
@@ -160,7 +160,7 @@
                 <div class="flex items-center gap-4 w-full md:w-auto">
                     <div class="relative w-full md:w-64">
                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#a1a1aa]">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                         </div>
                         <input type="text" x-model="search" placeholder="Search tracks..." class="w-full bg-[#111115] border border-[#3f3f46] focus:border-[#d40060] rounded-lg pl-9 pr-4 py-2 text-white focus:outline-none transition-colors text-sm">
                     </div>
@@ -185,7 +185,7 @@
                 <p class="text-xs text-[#a1a1aa] mt-1">Playlists are automatically scanned and synced every 6 hours.</p>
             </div>
             <button @click="showAddModal = true" class="bg-[#d40060] hover:bg-[#a3004a] text-white font-bold py-2.5 px-5 rounded-lg transition-colors flex items-center gap-2 shadow-md">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                 Add Synced Playlist
             </button>
         </div>
@@ -201,7 +201,7 @@
     <div x-show="showAddModal" x-cloak class="fixed inset-0 z-50 overflow-y-auto bg-black/70 flex items-center justify-center p-4">
         <div @click.away="showAddModal = false" class="bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-2xl max-w-md w-full p-6 text-left">
             <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                <svg class="w-5 h-5 text-[#d40060]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                <svg class="w-5 h-5 shrink-0 text-[#d40060]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                 Add Synced Playlist
             </h3>
             
@@ -246,7 +246,10 @@
     <!-- MODAL 2: EDIT SYNCED PLAYLIST MODAL -->
     <div x-show="showEditModal" x-cloak class="fixed inset-0 z-50 overflow-y-auto bg-black/70 flex items-center justify-center p-4">
         <div @click.away="showEditModal = false" class="bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-2xl max-w-md w-full p-6 text-left">
-            <h3 class="text-lg font-bold text-white mb-4">Edit Synced Playlist</h3>
+            <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                <svg class="w-5 h-5 shrink-0 text-[#d40060]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                Edit Synced Playlist
+            </h3>
             
             <form @submit.prevent="htmx.ajax('PUT', '/api/synced-playlists/' + editPlaylist.id, { target: '#synced-playlists-container', source: $el }); showEditModal = false" class="space-y-4">
                 <div>
@@ -282,7 +285,7 @@
     <div x-show="showDeleteModal" x-cloak class="fixed inset-0 z-50 overflow-y-auto bg-black/70 flex items-center justify-center p-4">
         <div @click.away="showDeleteModal = false" class="bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-2xl max-w-md w-full p-6 text-left">
             <h3 class="text-lg font-bold text-white mb-2 text-red-500 flex items-center gap-2">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
                 Delete Synced Playlist
             </h3>
             <p class="text-xs text-[#a1a1aa] mb-4">Are you sure you want to stop tracking <strong class="text-white" x-text="deleteTarget.title"></strong>?</p>
