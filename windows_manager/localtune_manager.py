@@ -1,15 +1,23 @@
 import os
-import sys
+import queue
 import shutil
 import subprocess
-import webbrowser
+import sys
 import threading
-import queue
+import webbrowser
+
 import customtkinter as ctk
+from PIL import Image
 
 # Configure CustomTkinter aesthetic
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
+
+
+def get_resource_path(relative_path: str) -> str:
+    """Get absolute path to bundled resource (works in dev and PyInstaller onefile)."""
+    base_path = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
 
 
 def get_base_dir() -> str:
@@ -43,16 +51,44 @@ class ManagerApp(ctk.CTk):
         self.is_running_container: bool = False
         self.is_processing_cmd: bool = False
 
+        # Set Window Icon if available
+        icon_ico = get_resource_path("icon.ico")
+        if os.path.exists(icon_ico):
+            try:
+                self.iconbitmap(icon_ico)
+            except (OSError, RuntimeError):
+                pass
+
         # Main Layout Container
         self.main_frame = ctk.CTkFrame(self, corner_radius=12)
         self.main_frame.pack(fill="both", expand=True, padx=15, pady=15)
 
-        # Title Label
-        self.title_label = ctk.CTkLabel(
-            self.main_frame,
-            text="🎵 LocalTune Manager",
-            font=ctk.CTkFont(size=20, weight="bold"),
-        )
+        # Title Label with Logo
+        icon_png = get_resource_path("icon.png")
+        header_image = None
+        if os.path.exists(icon_png):
+            try:
+                pil_img = Image.open(icon_png)
+                header_image = ctk.CTkImage(
+                    light_image=pil_img, dark_image=pil_img, size=(26, 26)
+                )
+            except (OSError, ValueError):
+                header_image = None
+
+        if header_image:
+            self.title_label = ctk.CTkLabel(
+                self.main_frame,
+                text="  LocalTune Manager",
+                image=header_image,
+                compound="left",
+                font=ctk.CTkFont(size=20, weight="bold"),
+            )
+        else:
+            self.title_label = ctk.CTkLabel(
+                self.main_frame,
+                text="🎵 LocalTune Manager",
+                font=ctk.CTkFont(size=20, weight="bold"),
+            )
         self.title_label.pack(pady=(15, 10))
 
         # Control Buttons Frame

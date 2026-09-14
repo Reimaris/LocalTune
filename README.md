@@ -1,4 +1,20 @@
-# LocalTune
+<p align="center">
+  <img src="app/static/icon.svg" width="128" height="128" alt="LocalTune Logo" />
+</p>
+
+<h1 align="center">LocalTune</h1>
+
+<p align="center">
+  <strong>Self-hosted audio downloader & delta-sync engine for Spotify and YouTube.</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/version-v2.3.0-pink" alt="Version" />
+  <img src="https://img.shields.io/badge/docker-ready-blue" alt="Docker Ready" />
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
+</p>
+
+---
 
 LocalTune is a self-hosted, lightweight web application for managing and downloading audio tracks from Spotify and YouTube. Built with FastAPI, HTMX, TailwindCSS, and Docker, it offers a beautifully simple interface to securely delta-sync your favorite playlists directly to your local storage.
 

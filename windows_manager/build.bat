@@ -21,8 +21,8 @@ echo 3. Installing dependencies (PyInstaller and CustomTkinter)...
 pip install -r requirements.txt >nul
 
 echo 4. Compiling standalone single-file executable...
-:: Compile with windowed mode (no console), onefile, and collect customtkinter assets
-pyinstaller --noconfirm --onefile --windowed --collect-all customtkinter --name "LocalTune_Manager" localtune_manager.py
+:: Compile with windowed mode (no console), onefile, icon, and collect customtkinter assets
+pyinstaller --noconfirm --onefile --windowed --collect-all customtkinter --icon="icon.ico" --add-data "icon.ico;." --add-data "icon.png;." --name "LocalTune_Manager" localtune_manager.py
 
 echo 5. Cleaning up...
 if exist dist\LocalTune_Manager.exe (

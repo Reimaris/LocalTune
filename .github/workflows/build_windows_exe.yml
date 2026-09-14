@@ -36,7 +36,7 @@ jobs:
       - name: Build LocalTune_Manager.exe with PyInstaller
         run: |
           cd windows_manager
-          pyinstaller --noconfirm --onefile --windowed --collect-all customtkinter --name "LocalTune_Manager" localtune_manager.py
+          pyinstaller --noconfirm --onefile --windowed --collect-all customtkinter --icon="icon.ico" --add-data "icon.ico;." --add-data "icon.png;." --name "LocalTune_Manager" localtune_manager.py
 
       - name: Upload Executable Artifact
         uses: actions/upload-artifact@v4
