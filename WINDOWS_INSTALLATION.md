@@ -23,26 +23,31 @@ The Windows standalone release comes pre-packaged with its own self-contained ru
 
 ---
 
-## Step 3: Run the Manager
+## Step 3: Run LocalTune
 
-1. Open the extracted folder and double-click **`LocalTune_Manager.exe`**.
+1. Open the extracted folder and double-click **`LocalTune.exe`**.
 2. *Note:* If Windows Defender SmartScreen displays a *"Windows protected your PC"* notification (standard for independent open-source executables), click **More info** -> **Run anyway**.
-3. The dark-themed **LocalTune Manager** window will appear.
-4. Click **▶️ Start LocalTune**. The status bar will show *"Running (Port 8000)"* and live logs will appear in the console box.
-5. Click **🌐 Open Dashboard** to launch the web interface in your browser (`http://127.0.0.1:8000`) and begin syncing your favorite playlists!
+3. LocalTune automatically boots the backend in the background and opens `http://127.0.0.1:8000` in your default web browser.
+4. A LocalTune icon will park in your Windows notification area (System Tray).
 
 ---
 
-## Managing Your Downloads and Folders
+## System Tray Controls
 
-- **Open Downloads:** Click **📁 Open Downloads** in the Manager to immediately open the local folder where your downloaded music and videos are stored.
-- **Open Logs:** Click **📄 Open Logs** to view diagnostic server logs.
-- **Stopping LocalTune:** Click **⏹️ Stop LocalTune** or simply close the Manager window (✕)—the backend process terminates cleanly with zero lingering background processes.
+LocalTune runs unobtrusively in your system tray without cluttering your taskbar. Right-click the LocalTune tray icon at any time to:
+- 🌐 **Open Dashboard**: Opens your browser directly to `http://127.0.0.1:8000`.
+- 📁 **Open Downloads Folder**: Opens the local folder containing your downloaded music and videos.
+- 📄 **View Logs**: Opens `config/logs/localtune.log` in Notepad for quick troubleshooting.
+- ✕ **Quit**: Completely stops LocalTune and cleanly terminates all background processes.
+
+*Tip:* Single-clicking or double-clicking the tray icon directly opens the web dashboard. If you accidentally launch `LocalTune.exe` while it is already running, it automatically opens your existing browser tab without crashing or creating duplicate processes.
 
 ---
 
-## Updates
+## Automatic Updates
 
-When a new version is released:
-1. Click **🔄 Update LocalTune** in the Manager (or accept the update prompt on startup).
-2. Click **⚡ Auto-Update** to automatically apply the update in-place without losing your database, configuration tokens, or downloaded songs.
+On launch, LocalTune checks GitHub for newer releases:
+1. If an update is detected, an update prompt will appear:
+   - **⚡ Update & Launch**: Automatically downloads and extracts the update in-place, strictly preserving your database (`config/localtune.db`), settings, and downloaded music (`downloads/`), then restarts the application.
+   - **🌐 Manual Update**: Opens the GitHub Releases page in your browser.
+   - **Skip Update**: Dismisses the dialog and proceeds immediately with normal launch.

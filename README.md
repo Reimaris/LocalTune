@@ -77,21 +77,21 @@ services:
       # - D:/Music:/downloads            # Windows
 ```
 
-## Windows Standalone Manager GUI
+## Windows Standalone System Tray Launcher
  
-For Windows users, LocalTune is available as a self-contained, standalone desktop bundle (`LocalTune-Windows-x64.zip`) featuring a dark-themed GUI manager (`LocalTune_Manager.exe`). It requires **zero prerequisites** (no Docker Desktop, no Python, no Git). Simply unzip and run to start downloading, apply in-place updates, inspect live logs, and access downloads without touching the command line.
+For Windows users, LocalTune is available as a self-contained, standalone desktop bundle (`LocalTune-Windows-x64.zip`) featuring a zero-click system tray launcher (`LocalTune.exe`). It requires **zero prerequisites** (no Docker Desktop, no Python, no Git). Simply extract and double-click `LocalTune.exe`—the server boots in the background, parks in your system tray, opens your browser dashboard automatically, and provides one-click access to downloads, logs, and in-place updates.
 
 **Download & Install:**  
 👉 **[Read the Complete Windows Installation Guide](WINDOWS_INSTALLATION.md)** for step-by-step instructions.
 
-*(For developers wanting to build the manager from source: Navigate to the `windows_manager` directory and run `build.bat`)*
+*(For developers wanting to build the launcher from source: Navigate to the `windows_launcher` directory and run `build.bat`)*
 
 ## Architecture
 
 - **Frontend:** HTML, Vanilla TailwindCSS, HTMX, AlpineJS.
 - **Backend:** Python 3.12, FastAPI, SQLAlchemy (SQLite), FastAPI BackgroundTasks.
 - **Core Extractors:** `spotdl`, `yt-dlp`, bundled `ffmpeg` & `deno`.
-- **Windows Standalone Bundle:** Python 3.12 embedded runtime, static `ffmpeg` & `deno` binaries, CustomTkinter supervisor GUI (PyInstaller executable).
+- **Windows Standalone Bundle:** Python 3.12 embedded runtime, static `ffmpeg` & `deno` binaries, `pystray` system tray supervisor (`LocalTune.exe` PyInstaller executable).
 - **Containerization (Linux / NAS):** Single-container Docker image hosted on GitHub Container Registry (`ghcr.io/reimaris/localtune:latest`).
 
 ## License

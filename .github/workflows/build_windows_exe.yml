@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'windows_manager/**'
+      - 'windows_launcher/**'
       - 'app/**'
       - 'requirements.txt'
       - '.github/workflows/build_windows_exe.yml'
@@ -30,15 +30,15 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install PyInstaller & Manager Dependencies
+      - name: Install PyInstaller & Launcher Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r windows_manager/requirements.txt
+          pip install -r windows_launcher/requirements.txt
 
-      - name: Build LocalTune_Manager.exe with PyInstaller
+      - name: Build LocalTune.exe with PyInstaller
         run: |
-          cd windows_manager
-          pyinstaller --noconfirm --onefile --windowed --collect-all customtkinter --icon="icon.ico" --add-data "icon.ico;." --add-data "icon.png;." --name "LocalTune_Manager" localtune_manager.py
+          cd windows_launcher
+          pyinstaller --noconfirm --onefile --windowed --icon="icon.ico" --add-data "icon.ico;." --add-data "icon.png;." --name "LocalTune" localtune.py
 
       - name: Create Staging Directory Structure
         run: |
@@ -46,7 +46,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path "staging\LocalTune\runtime"
           New-Item -ItemType Directory -Force -Path "staging\LocalTune\config\logs"
           New-Item -ItemType Directory -Force -Path "staging\LocalTune\downloads"
-          Copy-Item "windows_manager\dist\LocalTune_Manager.exe" -Destination "staging\LocalTune\"
+          Copy-Item "windows_launcher\dist\LocalTune.exe" -Destination "staging\LocalTune\"
           Copy-Item -Recurse "app" -Destination "staging\LocalTune\"
           Copy-Item "requirements.txt" -Destination "staging\LocalTune\"
           Copy-Item "README.md" -Destination "staging\LocalTune\"
@@ -85,7 +85,7 @@ jobs:
         with:
           name: LocalTune_Windows_Bundle
           path: |
-            windows_manager/dist/LocalTune_Manager.exe
+            windows_launcher/dist/LocalTune.exe
             LocalTune-Windows-x64.zip
           if-no-files-found: error
 
@@ -94,7 +94,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            windows_manager/dist/LocalTune_Manager.exe
+            windows_launcher/dist/LocalTune.exe
             LocalTune-Windows-x64.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
