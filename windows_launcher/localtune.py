@@ -417,6 +417,16 @@ def kill_process_tree(proc: subprocess.Popen[Any]) -> None:
                 pass
     else:
         try:
+            import signal
+
+            if hasattr(os, "killpg") and hasattr(os, "getpgid"):
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
             proc.kill()
         except Exception:
             pass
@@ -544,12 +554,13 @@ def wait_for_backend_health(
 ) -> bool:
     """Polls backend URL until it responds with HTTP or timeout/process exit occurs."""
     deadline = time.time() + timeout
+    probe_timeout = min(1.0, max(0.05, interval * 2))
     while time.time() < deadline:
         if proc is not None and proc.poll() is not None:
             return False
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "LocalTune-Launcher"})
-            with urllib.request.urlopen(req, timeout=1.0) as resp:
+            with urllib.request.urlopen(req, timeout=probe_timeout) as resp:
                 status = getattr(resp, "status", getattr(resp, "code", None))
                 if status in (200, 204, 301, 302, 307, 308):
                     return True
@@ -558,7 +569,10 @@ def wait_for_backend_health(
             return True
         except Exception:
             pass
-        time.sleep(interval)
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            break
+        time.sleep(min(interval, remaining))
     return False
 
 
