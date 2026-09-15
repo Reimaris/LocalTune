@@ -548,7 +548,7 @@ def spawn_backend_process(
 
 def wait_for_backend_health(
     url: str = "http://127.0.0.1:8000",
-    timeout: float = 5.0,
+    timeout: float = 25.0,
     interval: float = 0.25,
     proc: subprocess.Popen[Any] | None = None,
 ) -> bool:
@@ -774,10 +774,10 @@ class LocalTuneSupervisor:
             self.stop()
             return False
 
-        # Health probe (up to 5s)
+        # Health probe (up to 25s for cold start and initial migrations)
         healthy = wait_for_backend_health(
             url=f"http://127.0.0.1:{self.port}",
-            timeout=5.0,
+            timeout=25.0,
             interval=0.25,
             proc=self.backend_proc,
         )
