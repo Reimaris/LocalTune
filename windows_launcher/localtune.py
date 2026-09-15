@@ -15,6 +15,13 @@ try:
 except ImportError:
     tk = None  # type: ignore[assignment]
 
+try:
+    import pystray
+    from PIL import Image
+except ImportError:
+    pystray = None  # type: ignore[assignment]
+    Image = None  # type: ignore[assignment]
+
 
 MUTEX_NAME = "LocalTune_SingleInstance_Mutex"
 DEFAULT_PORT = "8000"
@@ -452,15 +459,127 @@ class LocalTuneSupervisor:
         open_file_or_folder(downloads_dir)
 
 
+def load_tray_icon(icon_path: str | None = None) -> Any:
+    """Loads icon from icon.ico or icon.png into a PIL Image, or creates fallback image."""
+    if Image is None:
+        return None
+
+    candidate_paths: list[str] = []
+    if icon_path:
+        candidate_paths.append(icon_path)
+
+    project_dir = get_project_dir() or get_base_dir()
+    candidate_paths.extend(
+        [
+            get_resource_path("icon.ico"),
+            get_resource_path("icon.png"),
+            os.path.join(project_dir, "windows_launcher", "icon.ico"),
+            os.path.join(project_dir, "windows_launcher", "icon.png"),
+            os.path.join(get_base_dir(), "icon.ico"),
+            os.path.join(get_base_dir(), "icon.png"),
+        ]
+    )
+
+    for path in candidate_paths:
+        if os.path.exists(path):
+            try:
+                img = Image.open(path)
+                img.load()
+                return img
+            except Exception:
+                pass
+
+    # Fallback emerald green 32x32 image
+    return Image.new("RGBA", (32, 32), color=(16, 185, 129, 255))
+
+
+def build_tray_menu(supervisor: LocalTuneSupervisor) -> Any:
+    """Builds the pystray context menu bound to supervisor actions."""
+    if pystray is None:
+        raise RuntimeError("pystray is required to build the system tray menu.")
+
+    def on_open_dashboard(icon: Any = None, item: Any = None) -> None:
+        supervisor.open_dashboard()
+
+    def on_open_downloads(icon: Any = None, item: Any = None) -> None:
+        supervisor.open_downloads()
+
+    def on_open_logs(icon: Any = None, item: Any = None) -> None:
+        supervisor.open_logs()
+
+    def on_quit(icon: Any = None, item: Any = None) -> None:
+        if icon is not None and hasattr(icon, "stop"):
+            icon.stop()
+        supervisor.stop()
+
+    return pystray.Menu(
+        pystray.MenuItem("🌐 Open Dashboard", on_open_dashboard, default=True),
+        pystray.MenuItem("📁 Open Downloads Folder", on_open_downloads),
+        pystray.MenuItem("📄 View Logs", on_open_logs),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem("✕ Quit", on_quit),
+    )
+
+
+class LocalTuneTray:
+    """Manages the pystray System Tray icon and event lifecycle."""
+
+    def __init__(
+        self,
+        supervisor: LocalTuneSupervisor,
+        icon_image: Any = None,
+    ) -> None:
+        self.supervisor = supervisor
+        self.icon_image = icon_image or load_tray_icon()
+        self.icon: Any = None
+
+    def setup(self) -> Any:
+        """Initializes the pystray Icon instance."""
+        if pystray is None:
+            raise RuntimeError("pystray is required to initialize LocalTuneTray.")
+
+        menu = build_tray_menu(self.supervisor)
+        title = f"LocalTune (Running on 127.0.0.1:{self.supervisor.port})"
+        self.icon = pystray.Icon(
+            name="LocalTune",
+            icon=self.icon_image,
+            title=title,
+            menu=menu,
+        )
+        return self.icon
+
+    def run(self) -> None:
+        """Runs the system tray event loop."""
+        if not self.icon:
+            self.setup()
+        if self.icon and hasattr(self.icon, "run"):
+            self.icon.run()
+
+    def stop(self) -> None:
+        """Stops the system tray icon and terminates the supervisor."""
+        if self.icon and hasattr(self.icon, "stop"):
+            try:
+                self.icon.stop()
+            except Exception:
+                pass
+        self.supervisor.stop()
+
+
 def main() -> None:
     supervisor = LocalTuneSupervisor()
     if supervisor.start(open_browser=True):
-        try:
-            # Keep supervisor running if started standalone
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            supervisor.stop()
+        if pystray is not None:
+            tray = LocalTuneTray(supervisor)
+            try:
+                tray.run()
+            except KeyboardInterrupt:
+                tray.stop()
+        else:
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                supervisor.stop()
 
 
 if __name__ == "__main__":
