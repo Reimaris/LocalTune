@@ -38,7 +38,7 @@ jobs:
       - name: Build LocalTune.exe with PyInstaller
         run: |
           cd windows_launcher
-          pyinstaller --noconfirm --onefile --windowed --icon="icon.ico" --add-data "icon.ico;." --add-data "icon.png;." --name "LocalTune" localtune.py
+          pyinstaller --noconfirm --onefile --windowed --icon="icon.ico" --add-data "icon.ico;." --add-data "icon.png;." --hidden-import="tkinter" --hidden-import="tkinter.ttk" --name "LocalTune" localtune.py
 
       - name: Create Staging Directory Structure
         run: |
@@ -58,7 +58,7 @@ jobs:
           Expand-Archive -Path "python-embed.zip" -DestinationPath "staging\LocalTune\runtime" -Force
           Remove-Item "python-embed.zip"
 
-          Set-Content -Path "staging\LocalTune\runtime\python312._pth" -Value "python312.zip`r`n.`r`n..`r`nLib/site-packages`r`nimport site"
+          Set-Content -Path "staging\LocalTune\runtime\python312._pth" -Encoding Ascii -Value "python312.zip`r`n.`r`n..`r`nLib\site-packages`r`nimport site"
           python -m pip install --no-cache-dir -r requirements.txt --target "staging\LocalTune\runtime\Lib\site-packages"
 
       - name: Download & Provision Bundled External Binaries (ffmpeg & deno)

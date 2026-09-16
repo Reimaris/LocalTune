@@ -17,8 +17,10 @@ from typing import Any
 
 try:
     import tkinter as tk
+    from tkinter import ttk
 except ImportError:
     tk = None  # type: ignore[assignment]
+    ttk = None  # type: ignore[assignment]
 
 try:
     import pystray
@@ -49,7 +51,9 @@ class SplashScreen:
 
         try:
             root = tk.Tk()
+            root.title(title)
             root.overrideredirect(True)  # frameless window
+            root.attributes("-topmost", True)  # display above active windows
             root.configure(bg="#1e1e24")
             root.resizable(False, False)
 
@@ -60,6 +64,8 @@ class SplashScreen:
             x = (sw - width) // 2
             y = (sh - height) // 2
             root.geometry(f"{width}x{height}+{x}+{y}")
+            root.lift()
+            root.focus_force()
 
             # --- thin border frame ---
             border_frame = tk.Frame(root, bg="#3f3f46", padx=1, pady=1)
@@ -99,28 +105,27 @@ class SplashScreen:
             ).pack(anchor="w", pady=(0, 10))
 
             # --- indeterminate progress bar (styled emerald) ---
-            try:
-                from tkinter import ttk
-
-                style = ttk.Style(root)
-                style.theme_use("default")
-                style.configure(
-                    "Splash.Horizontal.TProgressbar",
-                    troughcolor="#3f3f46",
-                    background="#10b981",
-                    thickness=6,
-                )
-                bar = ttk.Progressbar(
-                    inner,
-                    mode="indeterminate",
-                    style="Splash.Horizontal.TProgressbar",
-                    length=370,
-                )
-                bar.pack(fill=tk.X, pady=(0, 4))
-                bar.start(12)
-                self._progress = bar
-            except Exception:
-                pass  # progress bar is cosmetic; continue without it
+            if ttk is not None:
+                try:
+                    style = ttk.Style(root)
+                    style.theme_use("default")
+                    style.configure(
+                        "Splash.Horizontal.TProgressbar",
+                        troughcolor="#3f3f46",
+                        background="#10b981",
+                        thickness=6,
+                    )
+                    bar = ttk.Progressbar(
+                        inner,
+                        mode="indeterminate",
+                        style="Splash.Horizontal.TProgressbar",
+                        length=370,
+                    )
+                    bar.pack(fill=tk.X, pady=(0, 4))
+                    bar.start(12)
+                    self._progress = bar
+                except Exception:
+                    pass  # progress bar is cosmetic; continue without it
 
             self._root = root
             root.update()
@@ -129,14 +134,23 @@ class SplashScreen:
             # Any Tk initialisation failure — degrade gracefully
             self._root = None
 
+    def pump(self) -> None:
+        """Pumps the Tkinter event loop to keep the splash responsive and animating."""
+        if self._root is None or self._closed:
+            return
+        try:
+            self._root.update()
+        except Exception:
+            pass
+
     def update_status(self, text: str) -> None:
-        """Update the dynamic status label text (thread-safe via after_idle)."""
+        """Update the dynamic status label text and immediately refresh."""
         if self._root is None or self._closed:
             return
         try:
             if self._status_var is not None:
                 self._status_var.set(text)
-            self._root.update_idletasks()
+            self._root.update()
         except Exception:
             pass
 
@@ -145,10 +159,12 @@ class SplashScreen:
         if self._closed:
             return
         self._closed = True
+        self._status_var = None
         if self._root is not None:
             try:
                 if self._progress is not None:
                     self._progress.stop()
+                self._progress = None
                 self._root.destroy()
             except Exception:
                 pass
@@ -686,6 +702,7 @@ def wait_for_backend_health(
     timeout: float = 25.0,
     interval: float = 0.25,
     proc: subprocess.Popen[Any] | None = None,
+    pump_callback: Callable[[], None] | None = None,
 ) -> bool:
     """Polls backend URL until it responds with HTTP or timeout/process exit occurs."""
     deadline = time.time() + timeout
@@ -707,7 +724,13 @@ def wait_for_backend_health(
         remaining = deadline - time.time()
         if remaining <= 0:
             break
-        time.sleep(min(interval, remaining))
+
+        # Sleep in small slices while pumping the splash screen event loop
+        slice_end = time.time() + min(interval, remaining)
+        while time.time() < slice_end:
+            if pump_callback is not None:
+                pump_callback()
+            time.sleep(0.02)
     return False
 
 
@@ -831,14 +854,30 @@ class LocalTuneSupervisor:
     def acquire_lock(self) -> bool:
         return self.lock.acquire()
 
-    def check_and_prompt_updates(self) -> bool:
+    def check_and_prompt_updates(self, pump_callback: Callable[[], None] | None = None) -> bool:
         """Checks GitHub for newer version, prompts user if found, and handles selection."""
         cleanup_old_executables(self.project_dir)
 
-        try:
-            info = check_github_release(timeout=3.0)
-        except Exception:
-            info = None
+        info: dict[str, Any] | None = None
+        done = threading.Event()
+
+        def fetch() -> None:
+            nonlocal info
+            try:
+                info = check_github_release(timeout=3.0)
+            except Exception:
+                info = None
+            finally:
+                done.set()
+
+        thread = threading.Thread(target=fetch, daemon=True)
+        thread.start()
+
+        deadline = time.time() + 3.5
+        while not done.is_set() and time.time() < deadline:
+            if pump_callback is not None:
+                pump_callback()
+            time.sleep(0.02)
 
         if not info:
             return True
@@ -905,10 +944,11 @@ class LocalTuneSupervisor:
         # Show splash immediately for first instance
         version = get_local_version(self.project_dir)
         splash = SplashScreen(title="LocalTune", version=version)
+        start_time = time.time()
 
         try:
             splash.update_status("Checking for updates...")
-            if check_updates and not self.check_and_prompt_updates():
+            if check_updates and not self.check_and_prompt_updates(pump_callback=splash.pump):
                 splash.close()
                 return False
 
@@ -932,6 +972,7 @@ class LocalTuneSupervisor:
                 timeout=25.0,
                 interval=0.25,
                 proc=self.backend_proc,
+                pump_callback=splash.pump,
             )
 
             if not healthy:
@@ -944,7 +985,19 @@ class LocalTuneSupervisor:
                 self.stop()
                 return False
 
-            splash.update_status("Opening dashboard...")
+            # Ensure minimum splash display time of 1.0s for polished branding
+            min_duration = 1.0
+            elapsed = time.time() - start_time
+            if elapsed < min_duration:
+                splash.update_status("Opening dashboard...")
+                end_time = start_time + min_duration
+                while time.time() < end_time:
+                    splash.pump()
+                    time.sleep(0.02)
+            else:
+                splash.update_status("Opening dashboard...")
+                splash.pump()
+
             if open_browser:
                 webbrowser.open(f"http://127.0.0.1:{self.port}")
 

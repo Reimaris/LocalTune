@@ -10,6 +10,8 @@ pyinstaller --noconfirm --onefile --windowed ^
     --icon="icon.ico" ^
     --add-data "icon.ico;." ^
     --add-data "icon.png;." ^
+    --hidden-import="tkinter" ^
+    --hidden-import="tkinter.ttk" ^
     --name "LocalTune" ^
     localtune.py
 
