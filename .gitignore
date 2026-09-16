@@ -36,7 +36,10 @@ test_config/
 
 # Agent Governance, Instructions, Memory & Tickets (MUST NEVER BE TRACKED)
 AGENT_INSTRUCTIONS.md
+docs/
 docs/AGENT_INSTRUCTIONS.md
 docs/agent_memory/
 docs/tickets/
 context.md
+.directory
+.DS_Store
