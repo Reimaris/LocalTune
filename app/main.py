@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request
@@ -56,13 +57,27 @@ try:
 except OperationalError:
     pass
 
-app = FastAPI(title="LocalTune")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Modern FastAPI lifespan manager.
+
+    Starts the 6-hour periodic playlist sync background task on startup and
+    cancels it cleanly on shutdown, suppressing the expected CancelledError.
+    This replaces the legacy startup/shutdown hooks and eliminates the Uvicorn
+    LifespanOn queue deadlock on Python 3.12 Windows Proactor event loops.
+    """
+    sync_task = asyncio.create_task(periodic_sync_loop())
+    yield
+    sync_task.cancel()
+    try:
+        await sync_task
+    except asyncio.CancelledError:
+        pass
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Starts background periodic 6-hour playlist sync task on app startup."""
-    asyncio.create_task(periodic_sync_loop())
+app = FastAPI(title="LocalTune", lifespan=lifespan)
+
 
 
 # Setup static files and templates
