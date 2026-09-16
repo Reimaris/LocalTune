@@ -28,7 +28,135 @@ except ImportError:
     Image = None  # type: ignore[assignment]
 
 
+class SplashScreen:
+    """Lightweight frameless dark-mode startup splash screen built on tkinter.
+
+    Displays the app title, version badge, an indeterminate animated progress
+    bar, and a dynamic status label while the supervisor initialises.
+
+    If tkinter is unavailable (headless / server environments), all methods
+    silently no-op so the supervisor continues without errors.
+    """
+
+    def __init__(self, title: str = "LocalTune", version: str = "") -> None:
+        self._root: Any = None
+        self._status_var: Any = None
+        self._progress: Any = None
+        self._closed = False
+
+        if tk is None:
+            return  # headless fallback — do nothing
+
+        try:
+            root = tk.Tk()
+            root.overrideredirect(True)  # frameless window
+            root.configure(bg="#1e1e24")
+            root.resizable(False, False)
+
+            # --- geometry: centre on primary display ---
+            width, height = 420, 220
+            sw = root.winfo_screenwidth()
+            sh = root.winfo_screenheight()
+            x = (sw - width) // 2
+            y = (sh - height) // 2
+            root.geometry(f"{width}x{height}+{x}+{y}")
+
+            # --- thin border frame ---
+            border_frame = tk.Frame(root, bg="#3f3f46", padx=1, pady=1)
+            border_frame.pack(fill=tk.BOTH, expand=True)
+            inner = tk.Frame(border_frame, bg="#1e1e24", padx=24, pady=20)
+            inner.pack(fill=tk.BOTH, expand=True)
+
+            # --- app title ---
+            tk.Label(
+                inner,
+                text=title,
+                font=("Arial", 18, "bold"),
+                bg="#1e1e24",
+                fg="#f4f4f5",
+            ).pack(anchor="w")
+
+            # --- version badge ---
+            if version:
+                tk.Label(
+                    inner,
+                    text=version,
+                    font=("Arial", 10),
+                    bg="#1e1e24",
+                    fg="#10b981",
+                ).pack(anchor="w", pady=(0, 12))
+            else:
+                tk.Label(inner, text="", bg="#1e1e24").pack(pady=(0, 12))
+
+            # --- dynamic status label ---
+            self._status_var = tk.StringVar(value="Starting…")
+            tk.Label(
+                inner,
+                textvariable=self._status_var,
+                font=("Arial", 9),
+                bg="#1e1e24",
+                fg="#a1a1aa",
+            ).pack(anchor="w", pady=(0, 10))
+
+            # --- indeterminate progress bar (styled emerald) ---
+            try:
+                from tkinter import ttk
+
+                style = ttk.Style(root)
+                style.theme_use("default")
+                style.configure(
+                    "Splash.Horizontal.TProgressbar",
+                    troughcolor="#3f3f46",
+                    background="#10b981",
+                    thickness=6,
+                )
+                bar = ttk.Progressbar(
+                    inner,
+                    mode="indeterminate",
+                    style="Splash.Horizontal.TProgressbar",
+                    length=370,
+                )
+                bar.pack(fill=tk.X, pady=(0, 4))
+                bar.start(12)
+                self._progress = bar
+            except Exception:
+                pass  # progress bar is cosmetic; continue without it
+
+            self._root = root
+            root.update()
+
+        except Exception:
+            # Any Tk initialisation failure — degrade gracefully
+            self._root = None
+
+    def update_status(self, text: str) -> None:
+        """Update the dynamic status label text (thread-safe via after_idle)."""
+        if self._root is None or self._closed:
+            return
+        try:
+            if self._status_var is not None:
+                self._status_var.set(text)
+            self._root.update_idletasks()
+        except Exception:
+            pass
+
+    def close(self) -> None:
+        """Destroy the splash window. Safe to call multiple times."""
+        if self._closed:
+            return
+        self._closed = True
+        if self._root is not None:
+            try:
+                if self._progress is not None:
+                    self._progress.stop()
+                self._root.destroy()
+            except Exception:
+                pass
+            self._root = None
+
+
 MUTEX_NAME = "LocalTune_SingleInstance_Mutex"
+
 DEFAULT_PORT = "8000"
 LOCK_SOCKET_PORT = 48991
 SUBPROCESS_CREATIONFLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0
@@ -515,7 +643,14 @@ def spawn_backend_process(
 
     os.makedirs(os.path.dirname(log_file), exist_ok=True)
 
-    cmd = [python_exe, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", str(port)]
+    cmd = [
+        python_exe,
+        "-m", "uvicorn",
+        "app.main:app",
+        "--host", "127.0.0.1",
+        "--port", str(port),
+        "--app-dir", project_dir,
+    ]
     env = build_backend_env(project_dir)
 
     proc: subprocess.Popen[str] = subprocess.Popen(
@@ -755,43 +890,69 @@ class LocalTuneSupervisor:
         return user_choice["action"] == "continue"
 
     def start(self, open_browser: bool = True, check_updates: bool = True) -> bool:
-        """Starts the backend, performs health check, and opens browser."""
+        """Starts the backend, performs health check, and opens browser.
+
+        On first-instance launch, a SplashScreen is displayed immediately and
+        updated with real-time status text throughout the startup sequence.
+        On secondary-instance launch, the splash is skipped entirely and the
+        existing dashboard is focused in the browser.
+        """
         if not self.acquire_lock():
+            # Secondary instance — open browser on existing session, no splash
             self.lock.handle_existing_instance(f"http://127.0.0.1:{self.port}")
             return False
 
-        if check_updates and not self.check_and_prompt_updates():
-            return False
+        # Show splash immediately for first instance
+        version = get_local_version(self.project_dir)
+        splash = SplashScreen(title="LocalTune", version=version)
 
         try:
-            self.backend_proc, self.log_thread = spawn_backend_process(
-                project_dir=self.project_dir,
-                port=self.port,
-                log_file=self.log_file,
+            splash.update_status("Checking for updates...")
+            if check_updates and not self.check_and_prompt_updates():
+                splash.close()
+                return False
+
+            splash.update_status("Starting backend server...")
+            try:
+                self.backend_proc, self.log_thread = spawn_backend_process(
+                    project_dir=self.project_dir,
+                    port=self.port,
+                    log_file=self.log_file,
+                )
+            except Exception as e:
+                splash.close()
+                show_startup_error_dialog(f"Failed to spawn backend process: {e}", self.log_file)
+                self.stop()
+                return False
+
+            # Health probe (up to 25s for cold start and initial migrations)
+            splash.update_status("Waiting for backend readiness...")
+            healthy = wait_for_backend_health(
+                url=f"http://127.0.0.1:{self.port}",
+                timeout=25.0,
+                interval=0.25,
+                proc=self.backend_proc,
             )
-        except Exception as e:
-            show_startup_error_dialog(f"Failed to spawn backend process: {e}", self.log_file)
-            self.stop()
-            return False
 
-        # Health probe (up to 25s for cold start and initial migrations)
-        healthy = wait_for_backend_health(
-            url=f"http://127.0.0.1:{self.port}",
-            timeout=25.0,
-            interval=0.25,
-            proc=self.backend_proc,
-        )
+            if not healthy:
+                # Flush pending log output before reading — eliminates blank error dialogs
+                if self.log_thread and self.log_thread.is_alive():
+                    self.log_thread.join(timeout=1.0)
+                logs = read_recent_logs(self.log_file)
+                splash.close()
+                show_startup_error_dialog(logs, self.log_file)
+                self.stop()
+                return False
 
-        if not healthy:
-            logs = read_recent_logs(self.log_file)
-            show_startup_error_dialog(logs, self.log_file)
-            self.stop()
-            return False
+            splash.update_status("Opening dashboard...")
+            if open_browser:
+                webbrowser.open(f"http://127.0.0.1:{self.port}")
 
-        if open_browser:
-            webbrowser.open(f"http://127.0.0.1:{self.port}")
+        finally:
+            splash.close()
 
         return True
+
 
     def stop(self) -> None:
         """Terminates backend process tree and releases single-instance lock."""
