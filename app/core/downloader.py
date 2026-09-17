@@ -132,6 +132,7 @@ def handle_spotify(
     job_id: str,
     file_format: str = "opus",
     synced_playlist_id: int | None = None,
+    audio_bitrate: str = "best",
 ) -> str:
     """Handles Spotify downloads with spotdl, applying delta-sync.
 
@@ -271,6 +272,8 @@ def handle_spotify(
                     else f"{DOWNLOAD_DIR}/{{artist}} - {{title}}.{file_format}",
                     "--format",
                     file_format,
+                    "--bitrate",
+                    "auto" if audio_bitrate == "best" else audio_bitrate,
                 ]
             )
 
@@ -352,6 +355,7 @@ def handle_ytdlp(
     file_format: str = "opus",
     synced_playlist_id: int | None = None,
     resolution_cap: str = "best",
+    audio_bitrate: str = "best",
 ) -> str:
     """Handles generic yt-dlp downloads for non-Spotify URLs (YouTube, SoundCloud, Bandcamp, etc.).
 
@@ -484,13 +488,14 @@ def handle_ytdlp(
                     )
 
             if media_type == "audio":
+                quality_val = "0" if audio_bitrate == "best" else audio_bitrate
                 cmd_dl.extend(
                     [
                         "-x",
                         "--audio-format",
                         file_format,
                         "--audio-quality",
-                        "0",
+                        quality_val,
                         "--windows-filenames",
                         "-o",
                         output_tmpl,
@@ -811,11 +816,36 @@ def sync_playlist_job(synced_playlist_id: int, db: Session) -> dict:
             db.commit()
 
         # Step 3: Trigger downloads for new tracks
+        settings = db.query(models.Settings).first()
+        fmt = (
+            settings.default_audio_format
+            if settings and settings.default_audio_format
+            else "opus"
+        )
+        bitrate = (
+            settings.default_audio_bitrate
+            if settings and settings.default_audio_bitrate
+            else "best"
+        )
+
         if is_spotify:
-            title = handle_spotify(url, db, job_id, "opus", synced_playlist_id=sp.id)
+            title = handle_spotify(
+                url,
+                db,
+                job_id,
+                fmt,
+                synced_playlist_id=sp.id,
+                audio_bitrate=bitrate,
+            )
         else:
             title = handle_ytdlp(
-                url, db, job_id, "audio", "opus", synced_playlist_id=sp.id
+                url,
+                db,
+                job_id,
+                "audio",
+                fmt,
+                synced_playlist_id=sp.id,
+                audio_bitrate=bitrate,
             )
 
         sp.status = "Active"

@@ -15,6 +15,7 @@ def process_download(
     media_type: str = "audio",
     file_format: str = "opus",
     resolution_cap: str = "best",
+    audio_bitrate: str = "best",
 ):
     """
     Background task to process downloads, apply delta-sync, and notify.
@@ -25,11 +26,19 @@ def process_download(
     try:
         if re.search(r"(spotify\.com)", url):
             logger.info("Routing to Spotify handler...")
-            title = handle_spotify(url, db, job_id, file_format)
+            title = handle_spotify(
+                url, db, job_id, file_format, audio_bitrate=audio_bitrate
+            )
         else:
             logger.info("Routing to generic yt-dlp fallback handler...")
             title = handle_ytdlp(
-                url, db, job_id, media_type, file_format, resolution_cap=resolution_cap
+                url,
+                db,
+                job_id,
+                media_type,
+                file_format,
+                resolution_cap=resolution_cap,
+                audio_bitrate=audio_bitrate,
             )
 
         # Remove the placeholder row now that real tracks are registered

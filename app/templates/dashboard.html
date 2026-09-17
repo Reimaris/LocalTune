@@ -56,8 +56,9 @@
         <!-- Download Form Area -->
         <div class="bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-lg p-6 mb-8">
             <h2 class="text-lg font-bold text-white mb-4">Download Music or Video</h2>
-            <form hx-post="/download" hx-target="#global-alert" hx-swap="innerHTML" hx-on::after-request="this.reset(); url=''" class="flex flex-col lg:flex-row gap-4" x-data="{ url: '', audioFormat: 'opus', videoFormat: 'mkv', fileFormat: 'opus', resolutionCap: 'best', openFormatMenu: false, openResMenu: false }">
+            <form hx-post="/download" hx-target="#global-alert" hx-swap="innerHTML" hx-on::after-request="this.reset(); url=''" class="flex flex-col lg:flex-row gap-4" x-data="{ url: '', audioFormat: 'opus', audioBitrate: 'best', videoFormat: 'mkv', fileFormat: 'opus', resolutionCap: 'best' }">
                 <input type="hidden" name="file_format" :value="fileFormat">
+                <input type="hidden" name="audio_bitrate" :value="audioBitrate">
                 <input type="hidden" name="resolution_cap" :value="resolutionCap">
                 
                 <div class="flex-1 relative">
@@ -66,7 +67,7 @@
                 </div>
                 
                 <div class="flex gap-2 flex-wrap">
-                    <!-- Music Button Group -->
+                    <!-- Music Button Group: Format Selector + Bitrate Selector -->
                     <div class="flex items-stretch">
                         <!-- Primary Music Submit Button -->
                         <button type="submit" name="media_type" value="audio"
@@ -76,18 +77,37 @@
                             Music
                         </button>
 
-                        <!-- Audio Format Dropdown -->
+                        <!-- Audio Format Dropdown (opus / mp3 / m4a / flac / wav) -->
                         <div class="relative flex" x-data="{ open: false }">
                             <button type="button"
                                 @click="open = !open" @click.away="open = false"
-                                class="bg-[#b30052] hover:bg-[#8a003f] text-white px-3 py-3 border-l border-[#d40060]/50 rounded-r-lg flex items-center gap-1 text-sm font-medium transition-colors whitespace-nowrap">
+                                class="bg-[#b30052] hover:bg-[#8a003f] text-white px-3 py-3 border-l border-[#d40060]/50 flex items-center gap-1 text-sm font-medium transition-colors whitespace-nowrap">
                                 <span x-text="audioFormat"></span>
                                 <svg class="w-3 h-3 shrink-0 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
                             </button>
-                            <div x-show="open" x-transition class="absolute top-full left-0 mt-1 bg-[#24242b] border border-[#3f3f46] rounded-lg shadow-lg overflow-hidden z-10 w-20" style="display: none;">
-                                <button type="button" @click="audioFormat = 'mp3'; fileFormat = 'mp3'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm">mp3</button>
-                                <button type="button" @click="audioFormat = 'opus'; fileFormat = 'opus'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm">opus</button>
-                                <button type="button" @click="audioFormat = 'flac'; fileFormat = 'flac'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm">flac</button>
+                            <div x-show="open" x-transition class="absolute top-full left-0 mt-1 bg-[#24242b] border border-[#3f3f46] rounded-lg shadow-lg overflow-hidden z-10 w-24" style="display: none;">
+                                <button type="button" @click="audioFormat = 'opus'; fileFormat = 'opus'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm" :class="audioFormat === 'opus' ? 'text-emerald-400' : ''">opus</button>
+                                <button type="button" @click="audioFormat = 'mp3'; fileFormat = 'mp3'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm" :class="audioFormat === 'mp3' ? 'text-emerald-400' : ''">mp3</button>
+                                <button type="button" @click="audioFormat = 'm4a'; fileFormat = 'm4a'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm" :class="audioFormat === 'm4a' ? 'text-emerald-400' : ''">m4a</button>
+                                <button type="button" @click="audioFormat = 'flac'; fileFormat = 'flac'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm" :class="audioFormat === 'flac' ? 'text-emerald-400' : ''">flac</button>
+                                <button type="button" @click="audioFormat = 'wav'; fileFormat = 'wav'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm" :class="audioFormat === 'wav' ? 'text-emerald-400' : ''">wav</button>
+                            </div>
+                        </div>
+
+                        <!-- Audio Bitrate / Quality Dropdown -->
+                        <div class="relative flex" x-data="{ open: false }">
+                            <button type="button"
+                                @click="open = !open" @click.away="open = false"
+                                class="bg-[#8a003f] hover:bg-[#6e0032] text-white px-3 py-3 border-l border-[#d40060]/30 rounded-r-lg flex items-center gap-1 text-sm font-medium transition-colors whitespace-nowrap">
+                                <span x-text="audioBitrate === 'best' ? 'Best' : audioBitrate"></span>
+                                <svg class="w-3 h-3 shrink-0 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                            </button>
+                            <div x-show="open" x-transition class="absolute top-full left-0 mt-1 bg-[#24242b] border border-[#3f3f46] rounded-lg shadow-lg overflow-hidden z-10 w-36" style="display: none;">
+                                <button type="button" @click="audioBitrate = 'best'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm" :class="audioBitrate === 'best' ? 'text-emerald-400' : ''">Best (Auto)</button>
+                                <button type="button" @click="audioBitrate = '320k'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm" :class="audioBitrate === '320k' ? 'text-emerald-400' : ''">320 kbps</button>
+                                <button type="button" @click="audioBitrate = '256k'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm" :class="audioBitrate === '256k' ? 'text-emerald-400' : ''">256 kbps</button>
+                                <button type="button" @click="audioBitrate = '192k'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm" :class="audioBitrate === '192k' ? 'text-emerald-400' : ''">192 kbps</button>
+                                <button type="button" @click="audioBitrate = '128k'; open = false" class="block w-full text-left px-4 py-2 hover:bg-[#3f3f46] text-white text-sm" :class="audioBitrate === '128k' ? 'text-emerald-400' : ''">128 kbps</button>
                             </div>
                         </div>
                     </div>
