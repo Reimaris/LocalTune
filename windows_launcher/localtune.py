@@ -289,7 +289,7 @@ def get_local_version(project_dir: str | None = None) -> str:
                 return match.group(1)
         except Exception:
             pass
-    return "v2.5.2"
+    return "v2.6.0"
 
 
 def check_github_release(repo: str = "Reimaris/LocalTune", timeout: float = 3.0) -> dict[str, Any] | None:
