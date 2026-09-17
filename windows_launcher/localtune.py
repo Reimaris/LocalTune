@@ -53,7 +53,6 @@ class SplashScreen:
             root = tk.Tk()
             root.title(title)
             root.overrideredirect(True)  # frameless window
-            root.attributes("-topmost", True)  # display above active windows
             root.configure(bg="#1e1e24")
             root.resizable(False, False)
 
@@ -65,6 +64,8 @@ class SplashScreen:
             y = (sh - height) // 2
             root.geometry(f"{width}x{height}+{x}+{y}")
             root.lift()
+            root.attributes("-topmost", True)
+            root.attributes("-topmost", False)  # raise to foreground on open without forcing topmost
             root.focus_force()
 
             # --- thin border frame ---
