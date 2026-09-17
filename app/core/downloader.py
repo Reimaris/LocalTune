@@ -14,6 +14,7 @@ from yt_dlp.utils import sanitize_filename as yt_dlp_sanitize
 from app.core.notifications import send_telegram_notification
 from app.core.process_registry import cleanup_partial_files, download_manager
 from app.db import models
+from app.db.database import SessionLocal
 
 logger = logging.getLogger(__name__)
 def get_download_dir() -> Path:
@@ -126,6 +127,97 @@ def fix_permissions(path: Path):
         logger.error(f"Failed to fix permissions: {e}")
 
 
+def write_m3u8(
+    playlist_dir: Path | str,
+    db: Session | None = None,
+    tracks: list[models.Download] | None = None,
+) -> Path | None:
+    """Writes or refreshes a standardized UTF-8 playlist.m3u8 file inside playlist_dir.
+
+    All track entries strictly use relative filenames so the music folder can be
+    moved or mounted across media servers, network shares, and mobile players without broken links.
+    Conforms strictly to #EXTM3U and #EXTINF metadata standards.
+    If no completed tracks remain on disk, removes any existing playlist.m3u8 and returns None.
+    """
+    p_dir = Path(playlist_dir).resolve()
+    # Guard against generating in root download directory or non-directory
+    if p_dir == Path(DOWNLOAD_DIR).resolve() or not p_dir.is_dir():
+        return None
+
+    own_session = False
+    if tracks is None and db is None:
+        db = SessionLocal()
+        own_session = True
+
+    try:
+        valid_tracks: list[tuple[str, str, str]] = []  # (artist, title, rel_path)
+
+        if tracks is not None:
+            track_list = tracks
+        elif db is not None:
+            candidates = (
+                db.query(models.Download)
+                .filter(
+                    models.Download.status == "Completed",
+                    models.Download.file_path.isnot(None),
+                )
+                .order_by(models.Download.id.asc())
+                .all()
+            )
+            track_list = [
+                t
+                for t in candidates
+                if t.file_path
+                and (
+                    Path(t.file_path).resolve().parent == p_dir
+                    or p_dir in Path(t.file_path).resolve().parents
+                )
+            ]
+        else:
+            track_list = []
+
+        for t in track_list:
+            if t.file_path and os.path.isfile(t.file_path):
+                try:
+                    rel = os.path.relpath(t.file_path, p_dir).replace("\\", "/")
+                except ValueError:
+                    rel = os.path.basename(t.file_path)
+                artist = (t.artist or "").strip()
+                title = (t.title or "").strip()
+                valid_tracks.append((artist, title, rel))
+
+        m3u8_path = p_dir / "playlist.m3u8"
+
+        if not valid_tracks:
+            # No completed audio files remain; remove existing m3u8 if present
+            if m3u8_path.exists():
+                try:
+                    m3u8_path.unlink()
+                    logger.info(f"Removed empty playlist.m3u8 from {p_dir}")
+                except OSError as e:
+                    logger.warning(f"Could not remove {m3u8_path}: {e}")
+            return None
+
+        lines = ["#EXTM3U"]
+        for artist, title, rel in valid_tracks:
+            if artist and artist.lower() not in ("unknown artist", "unknown", ""):
+                entry_name = f"{artist} - {title}"
+            else:
+                entry_name = title or "Unknown Track"
+            lines.append(f"#EXTINF:-1,{entry_name}")
+            lines.append(rel)
+
+        content = "\n".join(lines) + "\n"
+        m3u8_path.write_text(content, encoding="utf-8")
+        logger.info(
+            f"Generated playlist.m3u8 at {m3u8_path} with {len(valid_tracks)} tracks."
+        )
+        return m3u8_path
+    finally:
+        if own_session and db is not None:
+            db.close()
+
+
 def handle_spotify(
     url: str,
     db: Session,
@@ -205,6 +297,8 @@ def handle_spotify(
             else metadata[0].get("name", "Spotify Track")
         )
         job_title_to_save = main_title if is_playlist else None
+        list_name = metadata[0].get("list_name", "") if is_playlist else ""
+        sanitized_list_name = spotdl_sanitize(list_name) if list_name else ""
 
         to_download = []
         for track in metadata:
@@ -225,6 +319,8 @@ def handle_spotify(
                 )
 
         if not to_download:
+            if is_playlist and sanitized_list_name:
+                write_m3u8(Path(DOWNLOAD_DIR) / sanitized_list_name, db=db)
             logger.info("All tracks already downloaded.")
             return main_title
 
@@ -338,6 +434,9 @@ def handle_spotify(
         # Fix permissions on /downloads
         fix_permissions(DOWNLOAD_DIR)
 
+        if is_playlist and sanitized_list_name:
+            write_m3u8(Path(DOWNLOAD_DIR) / sanitized_list_name, db=db)
+
         return main_title
 
     finally:
@@ -435,6 +534,8 @@ def handle_ytdlp(
                 )
 
         if not to_download:
+            if is_playlist and sanitized_playlist_title:
+                write_m3u8(Path(DOWNLOAD_DIR) / sanitized_playlist_title, db=db)
             logger.info("All tracks already downloaded.")
             return main_title
 
@@ -604,6 +705,9 @@ def handle_ytdlp(
 
         # Fix permissions on /downloads
         fix_permissions(DOWNLOAD_DIR)
+
+        if is_playlist and sanitized_playlist_title:
+            write_m3u8(Path(DOWNLOAD_DIR) / sanitized_playlist_title, db=db)
 
         return main_title
 
@@ -796,6 +900,7 @@ def sync_playlist_job(synced_playlist_id: int, db: Session) -> dict:
 
         # Step 2: Handle Mirror / Prune mode if active
         pruned_count = 0
+        affected_folders: set[Path] = set()
         if sp.sync_mode == "mirror":
             existing_downloads = (
                 db.query(models.Download)
@@ -804,6 +909,10 @@ def sync_playlist_job(synced_playlist_id: int, db: Session) -> dict:
             )
             for dl in existing_downloads:
                 if dl.track_id not in remote_track_ids:
+                    if dl.file_path:
+                        p = Path(dl.file_path).resolve().parent
+                        if p != Path(DOWNLOAD_DIR).resolve():
+                            affected_folders.add(p)
                     if dl.file_path and os.path.exists(dl.file_path):
                         try:
                             os.remove(dl.file_path)
@@ -847,6 +956,29 @@ def sync_playlist_job(synced_playlist_id: int, db: Session) -> dict:
                 synced_playlist_id=sp.id,
                 audio_bitrate=bitrate,
             )
+
+        completed_sp_downloads = (
+            db.query(models.Download)
+            .filter(
+                models.Download.synced_playlist_id == sp.id,
+                models.Download.status == "Completed",
+                models.Download.file_path.isnot(None),
+            )
+            .all()
+        )
+        for dl in completed_sp_downloads:
+            if dl.file_path:
+                p = Path(dl.file_path).resolve().parent
+                if p != Path(DOWNLOAD_DIR).resolve():
+                    affected_folders.add(p)
+
+        if sp.title:
+            cand = Path(DOWNLOAD_DIR) / yt_dlp_sanitize(sp.title)
+            if cand.is_dir():
+                affected_folders.add(cand.resolve())
+
+        for folder in affected_folders:
+            write_m3u8(folder, db=db)
 
         sp.status = "Active"
         sp.last_synced_at = datetime.now(timezone.utc)

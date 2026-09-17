@@ -16,7 +16,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from app.core.downloader import DOWNLOAD_DIR, fetch_playlist_title, yt_dlp_sanitize
+from app.core.downloader import (
+    DOWNLOAD_DIR,
+    fetch_playlist_title,
+    write_m3u8,
+    yt_dlp_sanitize,
+)
 from app.core.logging_config import log_generator, setup_logging
 from app.core.process_registry import download_manager
 from app.core.scheduler import periodic_sync_loop
@@ -434,6 +439,7 @@ async def api_tracks(request: Request, db: Session = Depends(get_db)):
 async def delete_track(request: Request, track_id: int, db: Session = Depends(get_db)):
     track = db.query(models.Download).filter(models.Download.id == track_id).first()
     if track:
+        parent_dir = None
         if track.file_path:
             parent_dir = os.path.dirname(track.file_path)
             if os.path.exists(track.file_path):
@@ -441,16 +447,16 @@ async def delete_track(request: Request, track_id: int, db: Session = Depends(ge
                     os.remove(track.file_path)
                 except OSError as e:
                     logger.error(f"Could not delete file {track.file_path}: {e}")
-            if parent_dir != str(DOWNLOAD_DIR) and parent_dir.startswith(
-                str(DOWNLOAD_DIR)
-            ):
-                try:
-                    os.rmdir(parent_dir)
-                    logger.info(f"Purged empty playlist folder from disk: {parent_dir}")
-                except OSError:
-                    pass
         db.delete(track)
         db.commit()
+
+        if parent_dir and parent_dir != str(DOWNLOAD_DIR) and parent_dir.startswith(str(DOWNLOAD_DIR)):
+            write_m3u8(parent_dir, db=db)
+            try:
+                os.rmdir(parent_dir)
+                logger.info(f"Purged empty playlist folder from disk: {parent_dir}")
+            except OSError:
+                pass
     return ""
 
 
@@ -476,6 +482,7 @@ async def soft_delete_track(
         # Cannot soft-delete active tracks; must be aborted first
         return await _render_tracks(request, db)
 
+    parent_dir = None
     if track.file_path:
         parent_dir = os.path.dirname(track.file_path)
         if os.path.exists(track.file_path):
@@ -483,17 +490,19 @@ async def soft_delete_track(
                 os.remove(track.file_path)
             except OSError as e:
                 logger.error(f"Could not delete file {track.file_path}: {e}")
-        if parent_dir != str(DOWNLOAD_DIR) and parent_dir.startswith(str(DOWNLOAD_DIR)):
-            try:
-                os.rmdir(parent_dir)
-                logger.info(f"Purged empty playlist folder from disk: {parent_dir}")
-            except OSError:
-                pass
 
     track.status = "Deleted"
     track.file_path = None
     db.commit()
     logger.info(f"Track {track_id} soft-deleted by user.")
+
+    if parent_dir and parent_dir != str(DOWNLOAD_DIR) and parent_dir.startswith(str(DOWNLOAD_DIR)):
+        write_m3u8(parent_dir, db=db)
+        try:
+            os.rmdir(parent_dir)
+            logger.info(f"Purged empty playlist folder from disk: {parent_dir}")
+        except OSError:
+            pass
 
     return await _render_tracks(request, db)
 
