@@ -45,3 +45,12 @@ class Settings(Base):
     spotify_client_id = Column(String, nullable=True)
     spotify_client_secret = Column(String, nullable=True)
     enable_browser_downloads = Column(Boolean, default=False, nullable=False)
+    naming_template = Column(
+        String,
+        default="{playlist}/{artist} - {title}.{ext}",
+        nullable=False,
+    )
+    default_audio_format = Column(String, default="opus", nullable=False)
+    default_audio_bitrate = Column(String, default="best", nullable=False)
+    sync_interval_hours = Column(Integer, default=6, nullable=False)
+    sync_on_startup = Column(Boolean, default=True, nullable=False)

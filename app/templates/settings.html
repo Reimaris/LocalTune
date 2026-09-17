@@ -42,6 +42,91 @@
             </div>
         </div>
 
+        <!-- Library & File Naming Section -->
+        <div>
+            <h3 class="text-lg font-medium text-white mb-4 border-b border-[#3f3f46] pb-2 mt-8">Library & File Naming</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-sm font-medium text-[#a1a1aa] mb-1">Naming Template</label>
+                    <input type="text" name="naming_template" value="{{ settings.naming_template or '{playlist}/{artist} - {title}.{ext}' }}" 
+                        class="w-full bg-[#111115] border border-[#3f3f46] focus:border-[#d40060] rounded-lg px-4 py-2 text-white focus:outline-none transition-colors text-sm font-mono">
+                </div>
+                <div class="bg-[#18181b] border border-[#27272a] rounded-lg p-3 text-xs text-[#a1a1aa] space-y-1.5">
+                    <div class="font-semibold text-[#d4d4d8] flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5 text-[#d40060] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        Available Placeholders:
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1 font-mono text-[11px] text-[#e4e4e7]">
+                        <span><strong class="text-emerald-400">{playlist}</strong> Playlist title</span>
+                        <span><strong class="text-emerald-400">{artist}</strong> Artist name</span>
+                        <span><strong class="text-emerald-400">{title}</strong> Song title</span>
+                        <span><strong class="text-emerald-400">{album}</strong> Album title</span>
+                        <span><strong class="text-emerald-400">{track_number}</strong> Track index</span>
+                        <span><strong class="text-emerald-400">{ext}</strong> File extension</span>
+                    </div>
+                    <p class="text-[#71717a] pt-1 border-t border-[#27272a]">
+                        * For standalone tracks without a playlist or album, folder tokens are automatically omitted and the file is placed directly in the root download directory.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Synced Playlists Audio Profile -->
+        <div>
+            <h3 class="text-lg font-medium text-white mb-4 border-b border-[#3f3f46] pb-2 mt-8">Synced Playlists Audio Profile</h3>
+            <p class="text-xs text-[#a1a1aa] mb-4">
+                Default format and quality automatically applied to recurring background Synced Playlist runs.
+            </p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-[#a1a1aa] mb-1">Default Format</label>
+                    <select name="default_audio_format" class="w-full bg-[#111115] border border-[#3f3f46] focus:border-[#d40060] rounded-lg px-4 py-2 text-white focus:outline-none transition-colors text-sm">
+                        <option value="opus" {% if settings.default_audio_format == 'opus' %}selected{% endif %}>OPUS (Recommended)</option>
+                        <option value="mp3" {% if settings.default_audio_format == 'mp3' %}selected{% endif %}>MP3</option>
+                        <option value="m4a" {% if settings.default_audio_format == 'm4a' %}selected{% endif %}>M4A (AAC)</option>
+                        <option value="flac" {% if settings.default_audio_format == 'flac' %}selected{% endif %}>FLAC (Lossless)</option>
+                        <option value="wav" {% if settings.default_audio_format == 'wav' %}selected{% endif %}>WAV</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-[#a1a1aa] mb-1">Default Bitrate / Quality</label>
+                    <select name="default_audio_bitrate" class="w-full bg-[#111115] border border-[#3f3f46] focus:border-[#d40060] rounded-lg px-4 py-2 text-white focus:outline-none transition-colors text-sm">
+                        <option value="best" {% if settings.default_audio_bitrate == 'best' %}selected{% endif %}>Best (Auto)</option>
+                        <option value="320k" {% if settings.default_audio_bitrate == '320k' %}selected{% endif %}>320 kbps</option>
+                        <option value="256k" {% if settings.default_audio_bitrate == '256k' %}selected{% endif %}>256 kbps</option>
+                        <option value="192k" {% if settings.default_audio_bitrate == '192k' %}selected{% endif %}>192 kbps</option>
+                        <option value="128k" {% if settings.default_audio_bitrate == '128k' %}selected{% endif %}>128 kbps</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Background Sync Schedule -->
+        <div>
+            <h3 class="text-lg font-medium text-white mb-4 border-b border-[#3f3f46] pb-2 mt-8">Background Sync Schedule</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-[#a1a1aa] mb-1">Sync Interval (Hours, Min 2)</label>
+                    <input type="number" name="sync_interval_hours" min="2" max="168" value="{{ settings.sync_interval_hours or 6 }}" 
+                        class="w-full bg-[#111115] border border-[#3f3f46] focus:border-[#d40060] rounded-lg px-4 py-2 text-white focus:outline-none transition-colors text-sm">
+                    <p class="text-xs text-[#71717a] mt-1">Defines how frequently LocalTune checks remote playlists for new tracks.</p>
+                </div>
+                <div class="flex items-start justify-between gap-4 pt-2">
+                    <div class="space-y-1">
+                        <label class="block text-sm font-medium text-white">Sync on Startup</label>
+                        <p class="text-xs text-[#a1a1aa] max-w-lg">
+                            Automatically triggers an asynchronous delta-sync run across all active Synced Playlists when LocalTune launches.
+                        </p>
+                    </div>
+                    <div class="pt-1">
+                        <input type="checkbox" name="sync_on_startup" value="true" 
+                            {% if settings.sync_on_startup %}checked{% endif %}
+                            class="w-5 h-5 accent-[#d40060] rounded cursor-pointer bg-[#111115] border border-[#3f3f46]">
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Remote Access Section -->
         <div>
             <h3 class="text-lg font-medium text-white mb-4 border-b border-[#3f3f46] pb-2 mt-8">Remote Access</h3>
@@ -61,10 +146,39 @@
         </div>
 
         <div class="pt-4 flex justify-end">
-            <button type="submit" class="bg-[#d40060] hover:bg-[#a3004a] text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md shadow-pink-900/20">
+            <button type="submit" class="bg-[#d40060] hover:bg-[#a3004a] text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md shadow-pink-900/20 flex items-center gap-2">
+                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                 Save Settings
             </button>
         </div>
     </form>
+
+    <!-- Upstream Engine Maintenance -->
+    <div class="mt-10 pt-6 border-t border-[#3f3f46]">
+        <h3 class="text-lg font-medium text-white mb-4">Upstream Extractor Maintenance</h3>
+        <div id="ytdlp-alert"></div>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#18181b] border border-[#27272a] rounded-xl p-4">
+            <div class="space-y-1">
+                <div class="text-sm font-medium text-white flex items-center gap-2">
+                    <span>yt-dlp Core Engine</span>
+                    <span class="bg-[#27272a] text-[#a1a1aa] font-mono text-xs px-2 py-0.5 rounded">v{{ ytdlp_version or 'Unknown' }}</span>
+                </div>
+                <p class="text-xs text-[#a1a1aa] max-w-md">
+                    YouTube frequently updates its player signatures. If video extraction encounters issues, update yt-dlp to the latest release in-place.
+                </p>
+            </div>
+            <div>
+                <button hx-post="/api/settings/update-ytdlp" hx-target="#ytdlp-alert" hx-indicator="#ytdlp-spinner"
+                    class="bg-[#27272a] hover:bg-[#3f3f46] text-white text-xs font-semibold py-2 px-4 rounded-lg transition-colors border border-[#3f3f46] flex items-center gap-2 shrink-0">
+                    <svg id="ytdlp-spinner" class="htmx-indicator w-3.5 h-3.5 animate-spin text-[#d40060]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                    </svg>
+                    <svg class="w-4 h-4 shrink-0 text-[#a1a1aa]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    Update yt-dlp
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}

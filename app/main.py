@@ -2,6 +2,8 @@ import asyncio
 import os
 import re
 import shutil
+import subprocess
+import sys
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -56,6 +58,67 @@ try:
         conn.commit()
 except OperationalError:
     pass
+
+for col_name, col_type, default_val in [
+    ("naming_template", "VARCHAR", "'{playlist}/{artist} - {title}.{ext}'"),
+    ("default_audio_format", "VARCHAR", "'opus'"),
+    ("default_audio_bitrate", "VARCHAR", "'best'"),
+    ("sync_interval_hours", "INTEGER", "6"),
+    ("sync_on_startup", "BOOLEAN", "1"),
+]:
+    try:
+        with engine.connect() as conn:
+            conn.execute(
+                text(
+                    f"ALTER TABLE settings ADD COLUMN {col_name} {col_type} DEFAULT {default_val}"
+                )
+            )
+            conn.commit()
+    except OperationalError:
+        pass
+
+
+def get_installed_ytdlp_version() -> str:
+    """Detect the currently installed version of yt-dlp."""
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "yt_dlp", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            return proc.stdout.strip()
+    except Exception as e:
+        logger.warning(f"Failed to detect yt-dlp version: {e}")
+    return "Unknown"
+
+
+def run_ytdlp_upgrade() -> tuple[bool, str]:
+    """Upgrade yt-dlp in-place using pip without cache."""
+    try:
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--upgrade",
+                "--no-cache-dir",
+                "yt-dlp",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if proc.returncode == 0:
+            new_ver = get_installed_ytdlp_version()
+            return True, f"Successfully updated yt-dlp to {new_ver}!"
+        else:
+            err = proc.stderr.strip() or proc.stdout.strip()
+            return False, f"Failed to update yt-dlp: {err}"
+    except Exception as e:
+        return False, f"Error upgrading yt-dlp: {e!s}"
 
 
 @asynccontextmanager
@@ -185,9 +248,16 @@ async def settings_page(request: Request, db: Session = Depends(get_db)):
         db.add(db_settings)
         db.commit()
 
+    ytdlp_version = get_installed_ytdlp_version()
+
     return templates.TemplateResponse(
         "settings.html",
-        {"request": request, "title": "Settings", "settings": db_settings},
+        {
+            "request": request,
+            "title": "Settings",
+            "settings": db_settings,
+            "ytdlp_version": ytdlp_version,
+        },
     )
 
 
@@ -199,6 +269,11 @@ async def update_settings(
     spotify_client_id: str = Form(""),
     spotify_client_secret: str = Form(""),
     enable_browser_downloads: str | None = Form(None),
+    naming_template: str = Form("{playlist}/{artist} - {title}.{ext}"),
+    default_audio_format: str = Form("opus"),
+    default_audio_bitrate: str = Form("best"),
+    sync_interval_hours: int = Form(6),
+    sync_on_startup: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     db_settings = db.query(models.Settings).first()
@@ -211,6 +286,11 @@ async def update_settings(
     db_settings.spotify_client_id = spotify_client_id
     db_settings.spotify_client_secret = spotify_client_secret
     db_settings.enable_browser_downloads = bool(enable_browser_downloads)
+    db_settings.naming_template = naming_template.strip() or "{playlist}/{artist} - {title}.{ext}"
+    db_settings.default_audio_format = default_audio_format
+    db_settings.default_audio_bitrate = default_audio_bitrate
+    db_settings.sync_interval_hours = max(2, sync_interval_hours)
+    db_settings.sync_on_startup = bool(sync_on_startup)
     db.commit()
 
     return """
@@ -219,6 +299,25 @@ async def update_settings(
       <span class="block sm:inline">Settings saved successfully.</span>
     </div>
     """
+
+
+@app.post("/api/settings/update-ytdlp", response_class=HTMLResponse)
+async def api_update_ytdlp():
+    success, message = await asyncio.to_thread(run_ytdlp_upgrade)
+    if success:
+        return f"""
+        <div class="bg-emerald-900/80 border border-emerald-500 text-white px-4 py-3 rounded-lg text-sm mb-4" role="alert">
+          <strong class="font-bold">Success!</strong>
+          <span class="block sm:inline">{message}</span>
+        </div>
+        """
+    else:
+        return f"""
+        <div class="bg-red-900/80 border border-red-500 text-white px-4 py-3 rounded-lg text-sm mb-4" role="alert">
+          <strong class="font-bold">Update Failed:</strong>
+          <span class="block sm:inline">{message}</span>
+        </div>
+        """
 
 
 @app.get("/api/tracks", response_class=HTMLResponse)
