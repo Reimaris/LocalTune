@@ -73,9 +73,9 @@
                         <button type="button" 
                             hx-post="/api/library/migrate" 
                             hx-target="#migration-progress"
-                            class="px-4 py-2 bg-[#27272a] hover:bg-[#3f3f46] text-white text-sm font-medium rounded-lg transition-colors border border-[#3f3f46] flex items-center gap-2">
+                            class="px-4 py-2 bg-[#27272a] hover:bg-[#3f3f46] text-white text-sm font-medium rounded-lg transition-colors border border-[#3f3f46] flex items-center gap-2 whitespace-nowrap shrink-0">
                             <svg class="w-4 h-4 text-[#d40060] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                            Migrate Existing Files
+                            <span>Migrate Existing Files</span>
                         </button>
                         <p class="text-xs text-[#71717a] mt-1.5">
                             Relocates all completed audio files in your library to match the current naming template above without re-downloading.
@@ -181,15 +181,15 @@
                     YouTube frequently updates its player signatures. If video extraction encounters issues, update yt-dlp to the latest release in-place.
                 </p>
             </div>
-            <div>
+            <div class="shrink-0">
                 <button hx-post="/api/settings/update-ytdlp" hx-target="#ytdlp-alert" hx-indicator="#ytdlp-spinner"
-                    class="bg-[#27272a] hover:bg-[#3f3f46] text-white text-xs font-semibold py-2 px-4 rounded-lg transition-colors border border-[#3f3f46] flex items-center gap-2 shrink-0">
+                    class="bg-[#27272a] hover:bg-[#3f3f46] text-white text-xs font-semibold py-2 px-4 rounded-lg transition-colors border border-[#3f3f46] flex items-center gap-2 shrink-0 whitespace-nowrap">
                     <svg id="ytdlp-spinner" class="htmx-indicator w-3.5 h-3.5 animate-spin text-[#d40060]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
                     </svg>
                     <svg class="w-4 h-4 shrink-0 text-[#a1a1aa]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                    Update yt-dlp
+                    <span>Update yt-dlp</span>
                 </button>
             </div>
         </div>

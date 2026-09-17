@@ -28,6 +28,7 @@ class MigrationStatus:
     errors: int = 0
     current_file: str = ""
     error_messages: list[str] = field(default_factory=list)
+    last_summary: dict[str, Any] | None = None
 
 
 migration_state = MigrationStatus()
@@ -159,6 +160,7 @@ def run_library_migration() -> dict[str, Any]:
             "collisions": migration_state.collisions,
             "errors": migration_state.errors,
         }
+        migration_state.last_summary = summary
         logger.info(f"Library migration finished: {summary}")
         return summary
 

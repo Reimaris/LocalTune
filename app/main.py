@@ -350,6 +350,17 @@ async def api_update_ytdlp():
 def _render_migration_status_html() -> str:
     from app.core.library_migration import migration_state
 
+    summary = migration_state.last_summary or (
+        {
+            "total": migration_state.total,
+            "moved": migration_state.moved,
+            "collisions": migration_state.collisions,
+            "errors": migration_state.errors,
+        }
+        if (migration_state.total > 0 and migration_state.processed >= migration_state.total)
+        else None
+    )
+
     if migration_state.is_running:
         pct = (
             int((migration_state.processed / migration_state.total) * 100)
@@ -374,7 +385,7 @@ def _render_migration_status_html() -> str:
             <p class="text-[11px] text-[#71717a] truncate font-mono">Current: {migration_state.current_file}</p>
         </div>
         """
-    elif migration_state.total > 0 and migration_state.processed >= migration_state.total:
+    elif summary:
         return f"""
         <div id="migration-progress" class="space-y-3">
             <div class="bg-emerald-900/80 border border-emerald-500 text-white px-4 py-3 rounded-lg text-sm flex items-start gap-2.5">
@@ -382,16 +393,16 @@ def _render_migration_status_html() -> str:
                 <div>
                     <strong class="font-bold">Migration Complete!</strong>
                     <div class="text-xs text-emerald-200 mt-0.5">
-                        Processed {migration_state.total} file(s): moved {migration_state.moved}, {migration_state.collisions} collision(s) suffixed, {migration_state.errors} error(s).
+                        Processed {summary['total']} file(s): moved {summary['moved']}, {summary['collisions']} collision(s) suffixed, {summary['errors']} error(s).
                     </div>
                 </div>
             </div>
             <button type="button" 
                 hx-post="/api/library/migrate" 
                 hx-target="#migration-progress"
-                class="px-4 py-2 bg-[#27272a] hover:bg-[#3f3f46] text-white text-sm font-medium rounded-lg transition-colors border border-[#3f3f46] flex items-center gap-2">
+                class="px-4 py-2 bg-[#27272a] hover:bg-[#3f3f46] text-white text-sm font-medium rounded-lg transition-colors border border-[#3f3f46] flex items-center gap-2 whitespace-nowrap shrink-0">
                 <svg class="w-4 h-4 text-[#d40060] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                Migrate Again
+                <span>Migrate Again</span>
             </button>
         </div>
         """
@@ -401,9 +412,9 @@ def _render_migration_status_html() -> str:
             <button type="button" 
                 hx-post="/api/library/migrate" 
                 hx-target="#migration-progress"
-                class="px-4 py-2 bg-[#27272a] hover:bg-[#3f3f46] text-white text-sm font-medium rounded-lg transition-colors border border-[#3f3f46] flex items-center gap-2">
+                class="px-4 py-2 bg-[#27272a] hover:bg-[#3f3f46] text-white text-sm font-medium rounded-lg transition-colors border border-[#3f3f46] flex items-center gap-2 whitespace-nowrap shrink-0">
                 <svg class="w-4 h-4 text-[#d40060] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                Migrate Existing Files
+                <span>Migrate Existing Files</span>
             </button>
             <p class="text-xs text-[#71717a] mt-1.5">
                 Relocates all completed audio files in your library to match the current naming template above without re-downloading.
