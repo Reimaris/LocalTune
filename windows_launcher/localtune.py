@@ -17,10 +17,12 @@ from typing import Any
 
 try:
     import tkinter as tk
-    from tkinter import ttk
+    from tkinter import filedialog, messagebox, ttk
 except ImportError:
     tk = None  # type: ignore[assignment]
     ttk = None  # type: ignore[assignment]
+    filedialog = None  # type: ignore[assignment]
+    messagebox = None  # type: ignore[assignment]
 
 try:
     import pystray
@@ -241,6 +243,95 @@ def get_python_executable(project_dir: str | None = None) -> str | None:
     return None
 
 
+def get_launcher_config_path(project_dir: str | None = None) -> str:
+    """Returns absolute path to config/launcher.json."""
+    if project_dir is None:
+        project_dir = get_project_dir() or get_base_dir()
+    return os.path.abspath(os.path.join(project_dir, "config", "launcher.json"))
+
+
+def load_launcher_config(project_dir: str | None = None) -> dict[str, Any]:
+    """Loads launcher configuration safely from config/launcher.json."""
+    config_path = get_launcher_config_path(project_dir)
+    if not os.path.exists(config_path):
+        return {}
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                return data
+    except Exception as e:
+        sys.stderr.write(f"Warning: Failed to load launcher config from {config_path}: {e}\n")
+    return {}
+
+
+def save_launcher_config(config: dict[str, Any], project_dir: str | None = None) -> None:
+    """Saves launcher configuration to config/launcher.json atomically."""
+    config_path = get_launcher_config_path(project_dir)
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    temp_path = config_path + ".tmp"
+    try:
+        with open(temp_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2)
+        if os.name == "nt" and os.path.exists(config_path):
+            try:
+                os.replace(temp_path, config_path)
+            except OSError:
+                os.remove(config_path)
+                os.rename(temp_path, config_path)
+        else:
+            os.replace(temp_path, config_path)
+    except Exception as e:
+        sys.stderr.write(f"Error saving launcher config to {config_path}: {e}\n")
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
+
+def get_effective_download_dir(project_dir: str | None = None) -> str:
+    """Resolves the download directory following strict 3-tier precedence:
+    1. System/User os.environ["DOWNLOAD_DIR"]
+    2. config/launcher.json -> download_dir
+    3. Default <project_dir>/downloads
+    """
+    if project_dir is None:
+        project_dir = get_project_dir() or get_base_dir()
+
+    env_dir = os.environ.get("DOWNLOAD_DIR")
+    if env_dir and env_dir.strip():
+        return os.path.abspath(env_dir.strip())
+
+    config = load_launcher_config(project_dir)
+    cfg_dir = config.get("download_dir")
+    if cfg_dir and isinstance(cfg_dir, str) and cfg_dir.strip():
+        return os.path.abspath(cfg_dir.strip())
+
+    return os.path.abspath(os.path.join(project_dir, "downloads"))
+
+
+def validate_directory_writable(target_dir: str) -> tuple[bool, str]:
+    """Ensures the directory exists and probes write permissions with a temporary file."""
+    try:
+        os.makedirs(target_dir, exist_ok=True)
+    except Exception as e:
+        return False, f"Could not create directory: {e}"
+
+    test_probe = os.path.join(target_dir, ".localtune_write_test")
+    try:
+        with open(test_probe, "w", encoding="utf-8") as f:
+            f.write("probe")
+        if os.path.exists(test_probe):
+            try:
+                os.remove(test_probe)
+            except OSError:
+                pass
+        return True, ""
+    except Exception as e:
+        return False, f"Directory is not writable: {e}"
+
+
 def build_backend_env(project_dir: str | None = None) -> dict[str, str]:
     """Builds environment variables injecting bundled bin/ and runtime/ into PATH."""
     if project_dir is None:
@@ -256,10 +347,10 @@ def build_backend_env(project_dir: str | None = None) -> dict[str, str]:
     env["PYTHONPATH"] = project_dir
     env["PYTHONUNBUFFERED"] = "1"
 
-    if "DOWNLOAD_DIR" not in env:
-        env["DOWNLOAD_DIR"] = os.path.join(project_dir, "downloads")
+    env["DOWNLOAD_DIR"] = get_effective_download_dir(project_dir)
 
     return env
+
 
 
 def parse_version_tuple(version_str: str) -> tuple[int, ...]:
@@ -533,7 +624,111 @@ def show_update_dialog(
     return callbacks
 
 
+def show_restart_dialog(
+    new_dir: str,
+    on_restart: Callable[[], None] | None = None,
+    on_later: Callable[[], None] | None = None,
+    root: Any = None,
+) -> dict[str, Callable[[], None]]:
+    """Displays a modal dialog prompting the user to restart LocalTune after directory change."""
+    def handle_restart() -> None:
+        if on_restart:
+            on_restart()
+
+    def handle_later() -> None:
+        if on_later:
+            on_later()
+
+    callbacks = {
+        "on_restart": handle_restart,
+        "on_later": handle_later,
+    }
+
+    if tk is None:
+        return callbacks
+
+    try:
+        should_destroy_root = False
+        if root is None:
+            root = tk.Tk()
+            root.title("Download Folder Updated")
+            should_destroy_root = True
+        else:
+            root.title("Download Folder Updated")
+
+        root.geometry("480x210")
+        root.minsize(440, 190)
+        root.configure(bg="#1e1e24")
+
+        frame = tk.Frame(root, bg="#1e1e24", padx=20, pady=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        title_lbl = tk.Label(
+            frame,
+            text="Download Folder Updated",
+            font=("Arial", 12, "bold"),
+            bg="#1e1e24",
+            fg="#f4f4f5",
+            anchor="w",
+        )
+        title_lbl.pack(fill=tk.X, pady=(0, 8))
+
+        desc_lbl = tk.Label(
+            frame,
+            text=f"New download directory:\n{new_dir}\n\nRestart LocalTune now to apply this change?",
+            font=("Arial", 9),
+            bg="#1e1e24",
+            fg="#a1a1aa",
+            justify=tk.LEFT,
+            anchor="w",
+        )
+        desc_lbl.pack(fill=tk.X, pady=(0, 15))
+
+        btn_frame = tk.Frame(frame, bg="#1e1e24")
+        btn_frame.pack(fill=tk.X, pady=(5, 0))
+
+        def btn_restart_click() -> None:
+            if should_destroy_root:
+                root.destroy()
+            handle_restart()
+
+        def btn_later_click() -> None:
+            if should_destroy_root:
+                root.destroy()
+            handle_later()
+
+        restart_btn = tk.Button(
+            btn_frame,
+            text="⚡ Restart Now",
+            font=("Arial", 9, "bold"),
+            bg="#10b981",
+            fg="white",
+            padx=10,
+            pady=4,
+            command=btn_restart_click,
+        )
+        restart_btn.pack(side=tk.LEFT, padx=(0, 8))
+
+        later_btn = tk.Button(
+            btn_frame,
+            text="Later",
+            padx=10,
+            pady=4,
+            command=btn_later_click,
+        )
+        later_btn.pack(side=tk.RIGHT)
+
+        if should_destroy_root:
+            root.mainloop()
+
+    except Exception as e:
+        sys.stderr.write(f"Failed to display restart dialog: {e}\n")
+
+    return callbacks
+
+
 def kill_process_tree(proc: subprocess.Popen[Any]) -> None:
+
     """Terminates process and any spawned child processes cleanly across platforms."""
     if proc.poll() is not None:
         return
@@ -1022,8 +1217,37 @@ class LocalTuneSupervisor:
         open_file_or_folder(self.log_file)
 
     def open_downloads(self) -> None:
-        downloads_dir = os.path.join(self.project_dir, "downloads")
+        downloads_dir = get_effective_download_dir(self.project_dir)
         open_file_or_folder(downloads_dir)
+
+    def restart_backend(self, pump_callback: Callable[[], None] | None = None) -> bool:
+        """Cleanly terminates the running backend process and restarts it with updated environment."""
+        if self.backend_proc:
+            kill_process_tree(self.backend_proc)
+            self.backend_proc = None
+        if self.log_thread and self.log_thread.is_alive():
+            try:
+                self.log_thread.join(timeout=1.0)
+            except Exception:
+                pass
+        try:
+            self.backend_proc, self.log_thread = spawn_backend_process(
+                project_dir=self.project_dir,
+                port=self.port,
+                log_file=self.log_file,
+            )
+        except Exception as e:
+            show_startup_error_dialog(f"Failed to restart backend process: {e}", self.log_file)
+            return False
+
+        return wait_for_backend_health(
+            url=f"http://127.0.0.1:{self.port}",
+            timeout=15.0,
+            interval=0.25,
+            proc=self.backend_proc,
+            pump_callback=pump_callback,
+        )
+
 
 
 def load_tray_icon(icon_path: str | None = None) -> Any:
@@ -1071,6 +1295,64 @@ def build_tray_menu(supervisor: LocalTuneSupervisor) -> Any:
     def on_open_downloads(icon: Any = None, item: Any = None) -> None:
         supervisor.open_downloads()
 
+    def on_change_downloads(icon: Any = None, item: Any = None) -> None:
+        def worker() -> None:
+            if tk is None or filedialog is None:
+                return
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            current_dir = get_effective_download_dir(supervisor.project_dir)
+            selected = filedialog.askdirectory(
+                parent=root,
+                title="Select LocalTune Download Folder",
+                initialdir=current_dir if os.path.exists(current_dir) else supervisor.project_dir,
+            )
+            root.destroy()
+            if not selected:
+                return
+
+            ok, err = validate_directory_writable(selected)
+            if not ok:
+                if messagebox is not None:
+                    err_root = tk.Tk()
+                    err_root.withdraw()
+                    err_root.attributes("-topmost", True)
+                    messagebox.showerror(
+                        "Invalid Directory",
+                        f"The selected directory cannot be used:\n{err}",
+                        parent=err_root,
+                    )
+                    err_root.destroy()
+                return
+
+            cfg = load_launcher_config(supervisor.project_dir)
+            cfg["download_dir"] = os.path.abspath(selected)
+            save_launcher_config(cfg, supervisor.project_dir)
+
+            if supervisor.backend_proc and supervisor.backend_proc.poll() is None:
+                def do_restart() -> None:
+                    supervisor.restart_backend()
+
+                show_restart_dialog(selected, on_restart=do_restart)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def on_reset_downloads(icon: Any = None, item: Any = None) -> None:
+        def worker() -> None:
+            cfg = load_launcher_config(supervisor.project_dir)
+            if "download_dir" in cfg:
+                del cfg["download_dir"]
+                save_launcher_config(cfg, supervisor.project_dir)
+            default_dir = os.path.join(supervisor.project_dir, "downloads")
+            if supervisor.backend_proc and supervisor.backend_proc.poll() is None:
+                def do_restart() -> None:
+                    supervisor.restart_backend()
+
+                show_restart_dialog(default_dir, on_restart=do_restart)
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def on_open_logs(icon: Any = None, item: Any = None) -> None:
         supervisor.open_logs()
 
@@ -1082,10 +1364,13 @@ def build_tray_menu(supervisor: LocalTuneSupervisor) -> Any:
     return pystray.Menu(
         pystray.MenuItem("🌐 Open Dashboard", on_open_dashboard, default=True),
         pystray.MenuItem("📁 Open Downloads Folder", on_open_downloads),
+        pystray.MenuItem("⚙ Change Downloads Folder...", on_change_downloads),
+        pystray.MenuItem("↺ Reset Downloads Folder to Default", on_reset_downloads),
         pystray.MenuItem("📄 View Logs", on_open_logs),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("✕ Quit", on_quit),
     )
+
 
 
 class LocalTuneTray:

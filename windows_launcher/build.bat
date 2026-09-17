@@ -12,6 +12,8 @@ pyinstaller --noconfirm --onefile --windowed ^
     --add-data "icon.png;." ^
     --hidden-import="tkinter" ^
     --hidden-import="tkinter.ttk" ^
+    --hidden-import="tkinter.filedialog" ^
+    --hidden-import="tkinter.messagebox" ^
     --name "LocalTune" ^
     localtune.py
 

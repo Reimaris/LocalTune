@@ -47,7 +47,7 @@ jobs:
       - name: Build LocalTune.exe with PyInstaller
         run: |
           cd windows_launcher
-          pyinstaller --noconfirm --onefile --windowed --icon="icon.ico" --add-data "icon.ico;." --add-data "icon.png;." --hidden-import="tkinter" --hidden-import="tkinter.ttk" --name "LocalTune" localtune.py
+          pyinstaller --noconfirm --onefile --windowed --icon="icon.ico" --add-data "icon.ico;." --add-data "icon.png;." --hidden-import="tkinter" --hidden-import="tkinter.ttk" --hidden-import="tkinter.filedialog" --hidden-import="tkinter.messagebox" --name "LocalTune" localtune.py
 
       - name: Create Staging Directory Structure
         run: |
