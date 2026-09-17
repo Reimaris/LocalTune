@@ -30,6 +30,7 @@ from app.core.downloader import (
     write_m3u8,
     yt_dlp_sanitize,
 )
+from app.core.library_metrics import get_library_metrics
 from app.core.logging_config import log_generator, setup_logging
 from app.core.process_registry import download_manager
 from app.core.scheduler import periodic_sync_loop
@@ -190,9 +191,15 @@ def health_check(db: Session = Depends(get_db)):
 
 
 @app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request):
+async def dashboard(request: Request, db: Session = Depends(get_db)):
     """Renders the main dashboard."""
-    context = {"request": request, "title": "LocalTune Dashboard"}
+    metrics = get_library_metrics(db)
+    context = {
+        "request": request,
+        "title": "LocalTune Dashboard",
+        "library_tracks": metrics["total_tracks"],
+        "library_storage": metrics["total_storage_formatted"],
+    }
     return templates.TemplateResponse("dashboard.html", context)
 
 
@@ -561,6 +568,9 @@ async def api_tracks(
                     }
                 )
 
+    # Library storage and track metrics for top header metric box
+    lib_metrics = get_library_metrics(db)
+
     return templates.TemplateResponse(
         "partials/track_list.html",
         {
@@ -570,6 +580,8 @@ async def api_tracks(
             "done": done,
             "errors": errors,
             "enable_browser_downloads": enable_browser_downloads,
+            "library_tracks": lib_metrics["total_tracks"],
+            "library_storage": lib_metrics["total_storage_formatted"],
             "q": q_str,
             "status": status_str,
             "sort_by": sort_by_str,

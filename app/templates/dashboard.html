@@ -34,19 +34,40 @@
             </button>
         </div>
 
-        <!-- Compact Header Stats Widget -->
-        <div id="stat-cards" class="flex items-center bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-md py-1.5 px-1">
-            <div class="flex flex-col items-center justify-center w-[72px] py-1 border-r border-[#3f3f46]">
-                <div class="text-[10px] text-[#a1a1aa] uppercase tracking-wider font-semibold">Queued</div>
-                <div class="text-lg font-medium text-white leading-tight">0</div>
+        <!-- Header Metrics & Stats -->
+        <div class="flex flex-wrap items-center gap-3">
+            <!-- Dedicated Library Metric Box -->
+            <div id="library-metrics" class="flex items-center bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-md py-1.5 px-3 gap-3">
+                <div class="flex items-center gap-2 pr-3 border-r border-[#3f3f46]">
+                    <svg class="w-4 h-4 text-[#d40060] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
+                    <div class="flex flex-col">
+                        <span class="text-[10px] text-[#a1a1aa] uppercase tracking-wider font-semibold">Tracks</span>
+                        <span class="text-sm font-bold text-white leading-tight">{{ library_tracks }}</span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-sky-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
+                    <div class="flex flex-col">
+                        <span class="text-[10px] text-[#a1a1aa] uppercase tracking-wider font-semibold">Storage</span>
+                        <span class="text-sm font-bold text-white leading-tight">{{ library_storage }}</span>
+                    </div>
+                </div>
             </div>
-            <div class="flex flex-col items-center justify-center w-[72px] py-1 border-r border-[#3f3f46]">
-                <div class="text-[10px] text-[#a1a1aa] uppercase tracking-wider font-semibold">Done</div>
-                <div class="text-lg font-medium text-emerald-500 leading-tight">0</div>
-            </div>
-            <div class="flex flex-col items-center justify-center w-[72px] py-1">
-                <div class="text-[10px] text-[#a1a1aa] uppercase tracking-wider font-semibold">Errors</div>
-                <div class="text-lg font-medium text-red-500 leading-tight">0</div>
+
+            <!-- Compact Header Stats Widget -->
+            <div id="stat-cards" class="flex items-center bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-md py-1.5 px-1">
+                <div class="flex flex-col items-center justify-center w-[72px] py-1 border-r border-[#3f3f46]">
+                    <div class="text-[10px] text-[#a1a1aa] uppercase tracking-wider font-semibold">Queued</div>
+                    <div class="text-lg font-medium text-white leading-tight">0</div>
+                </div>
+                <div class="flex flex-col items-center justify-center w-[72px] py-1 border-r border-[#3f3f46]">
+                    <div class="text-[10px] text-[#a1a1aa] uppercase tracking-wider font-semibold">Done</div>
+                    <div class="text-lg font-medium text-emerald-500 leading-tight">0</div>
+                </div>
+                <div class="flex flex-col items-center justify-center w-[72px] py-1">
+                    <div class="text-[10px] text-[#a1a1aa] uppercase tracking-wider font-semibold">Errors</div>
+                    <div class="text-lg font-medium text-red-500 leading-tight">0</div>
+                </div>
             </div>
         </div>
     </div>
