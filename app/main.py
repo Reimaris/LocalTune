@@ -332,6 +332,83 @@ async def api_update_ytdlp():
         """
 
 
+def _render_migration_status_html() -> str:
+    from app.core.library_migration import migration_state
+
+    if migration_state.is_running:
+        pct = (
+            int((migration_state.processed / migration_state.total) * 100)
+            if migration_state.total > 0
+            else 0
+        )
+        return f"""
+        <div id="migration-progress" class="space-y-3" hx-get="/api/library/migrate/status" hx-trigger="every 1s" hx-swap="outerHTML">
+            <div class="flex items-center justify-between text-xs text-white">
+                <span class="flex items-center gap-2">
+                    <svg class="animate-spin h-3.5 w-3.5 text-[#d40060]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Migrating library files... ({migration_state.processed}/{migration_state.total})
+                </span>
+                <span class="font-mono text-[#a1a1aa]">{pct}%</span>
+            </div>
+            <div class="w-full bg-[#111115] rounded-full h-2 overflow-hidden border border-[#3f3f46]">
+                <div class="bg-[#d40060] h-2 rounded-full transition-all duration-300" style="width: {pct}%"></div>
+            </div>
+            <p class="text-[11px] text-[#71717a] truncate font-mono">Current: {migration_state.current_file}</p>
+        </div>
+        """
+    elif migration_state.total > 0 and migration_state.processed >= migration_state.total:
+        return f"""
+        <div id="migration-progress" class="space-y-3">
+            <div class="bg-emerald-900/80 border border-emerald-500 text-white px-4 py-3 rounded-lg text-sm flex items-start gap-2.5">
+                <svg class="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                <div>
+                    <strong class="font-bold">Migration Complete!</strong>
+                    <div class="text-xs text-emerald-200 mt-0.5">
+                        Processed {migration_state.total} file(s): moved {migration_state.moved}, {migration_state.collisions} collision(s) suffixed, {migration_state.errors} error(s).
+                    </div>
+                </div>
+            </div>
+            <button type="button" 
+                hx-post="/api/library/migrate" 
+                hx-target="#migration-progress"
+                class="px-4 py-2 bg-[#27272a] hover:bg-[#3f3f46] text-white text-sm font-medium rounded-lg transition-colors border border-[#3f3f46] flex items-center gap-2">
+                <svg class="w-4 h-4 text-[#d40060] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                Migrate Again
+            </button>
+        </div>
+        """
+    else:
+        return """
+        <div id="migration-progress">
+            <button type="button" 
+                hx-post="/api/library/migrate" 
+                hx-target="#migration-progress"
+                class="px-4 py-2 bg-[#27272a] hover:bg-[#3f3f46] text-white text-sm font-medium rounded-lg transition-colors border border-[#3f3f46] flex items-center gap-2">
+                <svg class="w-4 h-4 text-[#d40060] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                Migrate Existing Files
+            </button>
+            <p class="text-xs text-[#71717a] mt-1.5">
+                Relocates all completed audio files in your library to match the current naming template above without re-downloading.
+            </p>
+        </div>
+        """
+
+
+@app.post("/api/library/migrate", response_class=HTMLResponse)
+async def api_library_migrate():
+    from app.core.library_migration import start_background_migration
+    start_background_migration()
+    return _render_migration_status_html()
+
+
+@app.get("/api/library/migrate/status", response_class=HTMLResponse)
+async def api_library_migrate_status():
+    return _render_migration_status_html()
+
+
 @app.get("/api/tracks", response_class=HTMLResponse)
 async def api_tracks(request: Request, db: Session = Depends(get_db)):
     settings = db.query(models.Settings).first()

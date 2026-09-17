@@ -127,6 +127,112 @@ def fix_permissions(path: Path):
         logger.error(f"Failed to fix permissions: {e}")
 
 
+def sanitize_path_segment(value: str) -> str:
+    """Sanitizes a string to be safely used as a single file or directory segment."""
+    sanitized = yt_dlp_sanitize(value.strip())
+    # Strip any characters that yt_dlp_sanitize might preserve that could act as path separators
+    for sep in ("/", "\\", ":"):
+        sanitized = sanitized.replace(sep, "_")
+    return sanitized.strip(" .")
+
+
+def resolve_track_path(
+    template: str,
+    artist: str = "",
+    title: str = "",
+    album: str = "",
+    playlist: str = "",
+    track_number: int | str = "",
+    ext: str = "opus",
+    download_dir: Path | str | None = None,
+) -> Path:
+    """Resolves a target file path given a template and metadata placeholders.
+
+    Tokens supported: {artist}, {title}, {album}, {playlist}, {track_number}, {ext}.
+    For standalone tracks with empty playlist/album tokens, empty directory segments
+    are collapsed so the file is placed directly inside download_dir.
+    """
+    base_dir = Path(download_dir if download_dir is not None else DOWNLOAD_DIR).resolve()
+    clean_ext = ext.lstrip(".") or "opus"
+
+    # Normalize track number: format single digits as 01, 02, etc. if integer
+    formatted_track_num = ""
+    if track_number is not None and str(track_number).strip():
+        s_num = str(track_number).strip()
+        if s_num.isdigit():
+            formatted_track_num = f"{int(s_num):02d}"
+        else:
+            formatted_track_num = s_num
+
+    # Token dictionary with sanitized values
+    tokens = {
+        "artist": sanitize_path_segment(artist) if artist else "",
+        "title": sanitize_path_segment(title) if title else "",
+        "album": sanitize_path_segment(album) if album else "",
+        "playlist": sanitize_path_segment(playlist) if playlist else "",
+        "track_number": formatted_track_num,
+        "ext": clean_ext,
+    }
+
+    # Normalize template separators
+    norm_template = template.replace("\\", "/").strip("/")
+    segments = norm_template.split("/")
+
+    dir_segments: list[str] = []
+    # All segments except the last are directory levels
+    for seg in segments[:-1]:
+        res_seg = seg
+        for token_name, val in tokens.items():
+            res_seg = res_seg.replace(f"{{{token_name}}}", val)
+        res_seg = re.sub(r"\s+", " ", res_seg).strip(" -_.")
+        # If segment resulted in an empty string (e.g. {playlist} was empty), collapse it!
+        if res_seg:
+            dir_segments.append(res_seg)
+
+    # Last segment is filename
+    file_seg = segments[-1]
+    for token_name, val in tokens.items():
+        file_seg = file_seg.replace(f"{{{token_name}}}", val)
+
+    file_seg = re.sub(r"\s+", " ", file_seg).strip(" -_")
+    if not file_seg or file_seg == f".{clean_ext}":
+        file_seg = f"Unknown - Track.{clean_ext}"
+
+    if not file_seg.endswith(f".{clean_ext}"):
+        file_seg = f"{file_seg}.{clean_ext}"
+
+    target_path = base_dir
+    for d in dir_segments:
+        target_path = target_path / d
+    target_path = target_path / file_seg
+
+    return target_path
+
+
+def get_collision_free_path(target_path: Path) -> Path:
+    """If target_path exists on disk, appends a numeric suffix: ' (1)', ' (2)', etc."""
+    if not target_path.exists():
+        return target_path
+
+    parent = target_path.parent
+    stem = target_path.stem
+    suffix = target_path.suffix
+
+    counter = 1
+    match = re.search(r"^(.*?)\s*\((\d+)\)$", stem)
+    base_stem = stem
+    if match:
+        base_stem = match.group(1).rstrip()
+        counter = int(match.group(2)) + 1
+
+    candidate = parent / f"{base_stem} ({counter}){suffix}"
+    while candidate.exists():
+        counter += 1
+        candidate = parent / f"{base_stem} ({counter}){suffix}"
+
+    return candidate
+
+
 def write_m3u8(
     playlist_dir: Path | str,
     db: Session | None = None,
