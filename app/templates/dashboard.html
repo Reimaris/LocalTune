@@ -172,22 +172,97 @@
         </div>
 
         <!-- Main Table Area -->
-        <div class="bg-[#24242b] border border-[#3f3f46] rounded-lg shadow overflow-hidden" x-data="{ tab: 'all', search: '', showStatus: false, expandedPlaylists: {} }">
-            <div class="p-4 border-b border-[#3f3f46] flex flex-col md:flex-row justify-between items-center gap-4">
-                <div class="flex gap-2 bg-[#1e1e24] p-1 rounded-lg border border-[#3f3f46]">
-                    <button @click="tab = 'all'; search = ''" :class="{'bg-[#d40060] text-white': tab === 'all', 'text-[#a1a1aa] hover:text-white': tab !== 'all'}" class="px-4 py-1.5 rounded-md text-sm font-medium transition-colors">All Tracks</button>
+        <div class="bg-[#24242b] border border-[#3f3f46] rounded-lg shadow overflow-hidden" x-data="{ expandedPlaylists: {} }">
+            <!-- Filter Toolbar Form -->
+            <form id="history-filter-form" onsubmit="return false;" class="p-4 border-b border-[#3f3f46] flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                <div id="filter-inputs-container">
+                    <input type="hidden" name="status" id="filter-status" value="all">
+                    <input type="hidden" name="sort_by" id="filter-sort-by" value="downloaded_at">
+                    <input type="hidden" name="order" id="filter-order" value="desc">
+                    <input type="hidden" name="page" id="filter-page" value="1">
+                    <input type="hidden" name="page_size" id="filter-page-size" value="25">
                 </div>
+
+                <!-- Status Filter Pills -->
+                <div id="status-pills-container" class="flex flex-wrap gap-1.5 items-center">
+                    <button type="button"
+                        onclick="document.getElementById('filter-status').value='all'; document.getElementById('filter-page').value='1';"
+                        hx-get="/api/tracks"
+                        hx-target="#tracks-table-container"
+                        hx-include="#history-filter-form"
+                        hx-vals='{"status": "all", "page": "1"}'
+                        class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#d40060] text-white shadow-sm transition-colors">
+                        All
+                    </button>
+                    <button type="button"
+                        onclick="document.getElementById('filter-status').value='downloading'; document.getElementById('filter-page').value='1';"
+                        hx-get="/api/tracks"
+                        hx-target="#tracks-table-container"
+                        hx-include="#history-filter-form"
+                        hx-vals='{"status": "downloading", "page": "1"}'
+                        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#1e1e24] text-[#a1a1aa] hover:text-white hover:bg-[#3f3f46] border border-[#3f3f46] transition-colors">
+                        Downloading
+                    </button>
+                    <button type="button"
+                        onclick="document.getElementById('filter-status').value='completed'; document.getElementById('filter-page').value='1';"
+                        hx-get="/api/tracks"
+                        hx-target="#tracks-table-container"
+                        hx-include="#history-filter-form"
+                        hx-vals='{"status": "completed", "page": "1"}'
+                        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#1e1e24] text-[#a1a1aa] hover:text-white hover:bg-[#3f3f46] border border-[#3f3f46] transition-colors">
+                        Completed
+                    </button>
+                    <button type="button"
+                        onclick="document.getElementById('filter-status').value='failed'; document.getElementById('filter-page').value='1';"
+                        hx-get="/api/tracks"
+                        hx-target="#tracks-table-container"
+                        hx-include="#history-filter-form"
+                        hx-vals='{"status": "failed", "page": "1"}'
+                        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#1e1e24] text-[#a1a1aa] hover:text-white hover:bg-[#3f3f46] border border-[#3f3f46] transition-colors">
+                        Failed
+                    </button>
+                    <button type="button"
+                        onclick="document.getElementById('filter-status').value='aborted'; document.getElementById('filter-page').value='1';"
+                        hx-get="/api/tracks"
+                        hx-target="#tracks-table-container"
+                        hx-include="#history-filter-form"
+                        hx-vals='{"status": "aborted", "page": "1"}'
+                        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#1e1e24] text-[#a1a1aa] hover:text-white hover:bg-[#3f3f46] border border-[#3f3f46] transition-colors">
+                        Aborted
+                    </button>
+                    <button type="button"
+                        onclick="document.getElementById('filter-status').value='deleted'; document.getElementById('filter-page').value='1';"
+                        hx-get="/api/tracks"
+                        hx-target="#tracks-table-container"
+                        hx-include="#history-filter-form"
+                        hx-vals='{"status": "deleted", "page": "1"}'
+                        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#1e1e24] text-[#a1a1aa] hover:text-white hover:bg-[#3f3f46] border border-[#3f3f46] transition-colors">
+                        Deleted
+                    </button>
+                </div>
+
+                <!-- Live Search Box -->
                 <div class="flex items-center gap-4 w-full md:w-auto">
-                    <div class="relative w-full md:w-64">
+                    <div class="relative w-full md:w-72">
                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#a1a1aa]">
                             <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                         </div>
-                        <input type="text" x-model="search" placeholder="Search tracks..." class="w-full bg-[#111115] border border-[#3f3f46] focus:border-[#d40060] rounded-lg pl-9 pr-4 py-2 text-white focus:outline-none transition-colors text-sm">
+                        <input type="text"
+                            id="track-search-input"
+                            name="q"
+                            placeholder="Search tracks, artists..."
+                            oninput="document.getElementById('filter-page').value='1';"
+                            onkeydown="if(event.key === 'Enter'){ event.preventDefault(); }"
+                            hx-get="/api/tracks"
+                            hx-trigger="keyup changed delay:300ms, search"
+                            hx-target="#tracks-table-container"
+                            hx-include="#history-filter-form"
+                            class="w-full bg-[#111115] border border-[#3f3f46] focus:border-[#d40060] rounded-lg pl-9 pr-4 py-2 text-white focus:outline-none transition-colors text-sm">
                     </div>
                 </div>
-            </div>
+            </form>
 
-            <div id="track-list-container" hx-get="/api/tracks" hx-trigger="load, every 2s" hx-target="#tracks-table-container" hx-swap="innerHTML" class="overflow-x-auto min-h-[400px]">
+            <div id="track-list-container" hx-get="/api/tracks" hx-trigger="load, every 3s" hx-include="#history-filter-form" hx-target="#tracks-table-container" hx-swap="innerHTML" class="overflow-x-auto min-h-[400px]">
                 <div id="tracks-table-container">
                     <div class="p-8 text-center text-[#a1a1aa]">Loading tracks...</div>
                 </div>

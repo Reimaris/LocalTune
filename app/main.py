@@ -1,4 +1,5 @@
 import asyncio
+import math
 import os
 import re
 import shutil
@@ -8,11 +9,18 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    Form,
+    HTTPException,
+    Request,
+)
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import text
+from sqlalchemy import or_, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -410,48 +418,102 @@ async def api_library_migrate_status():
 
 
 @app.get("/api/tracks", response_class=HTMLResponse)
-async def api_tracks(request: Request, db: Session = Depends(get_db)):
+async def api_tracks(
+    request: Request,
+    q: str | None = None,
+    status: str | None = None,
+    sort_by: str | None = None,
+    order: str | None = None,
+    page: int | None = None,
+    page_size: int | None = None,
+    db: Session = Depends(get_db),
+):
     settings = db.query(models.Settings).first()
     enable_browser_downloads = settings.enable_browser_downloads if settings else False
-    tracks = (
-        db.query(models.Download)
-        .filter(models.Download.synced_playlist_id.is_(None))
-        .order_by(models.Download.downloaded_at.desc())
-        .limit(150)
-        .all()
-    )
-    queued = (
-        db.query(models.Download)
-        .filter(
-            models.Download.synced_playlist_id.is_(None),
-            models.Download.status == "Queued",
+
+    # Extract query params if not explicitly passed
+    form_data: dict[str, str] = {}
+    if request.method == "POST":
+        try:
+            raw_form = await request.form()
+            form_data = {k: str(v) for k, v in raw_form.items()}
+        except Exception:
+            pass
+
+    q_str = (q if q is not None else (request.query_params.get("q") or form_data.get("q", ""))).strip()
+    status_str = (status if status is not None else (request.query_params.get("status") or form_data.get("status", "all"))).strip().lower()
+    sort_by_str = (sort_by if sort_by is not None else (request.query_params.get("sort_by") or form_data.get("sort_by", "downloaded_at"))).strip().lower()
+    order_str = (order if order is not None else (request.query_params.get("order") or form_data.get("order", "desc"))).strip().lower()
+
+    p_raw: str | int | None = page if page is not None else (request.query_params.get("page") or form_data.get("page"))
+    try:
+        p_val = int(p_raw) if p_raw is not None else 1
+    except (ValueError, TypeError):
+        p_val = 1
+
+    ps_raw: str | int | None = page_size if page_size is not None else (request.query_params.get("page_size") or form_data.get("page_size"))
+    try:
+        ps_val = int(ps_raw) if ps_raw is not None else 25
+    except (ValueError, TypeError):
+        ps_val = 25
+
+    if ps_val not in (25, 50, 100):
+        ps_val = 25
+
+    # Global stat counters across all on-demand tracks (for #stat-cards)
+    stat_base = db.query(models.Download).filter(models.Download.synced_playlist_id.is_(None))
+    queued = stat_base.filter(models.Download.status == "Queued").count()
+    downloading = stat_base.filter(models.Download.status.in_(["Downloading", "Fetching Metadata"])).count()
+    done = stat_base.filter(models.Download.status == "Completed").count()
+    errors = stat_base.filter(models.Download.status == "Failed").count()
+
+    # Main query for display
+    query = db.query(models.Download).filter(models.Download.synced_playlist_id.is_(None))
+
+    # 1. Search filter
+    if q_str:
+        pattern = f"%{q_str}%"
+        query = query.filter(
+            or_(
+                models.Download.title.ilike(pattern),
+                models.Download.artist.ilike(pattern),
+                models.Download.job_title.ilike(pattern),
+            )
         )
-        .count()
-    )
-    downloading = (
-        db.query(models.Download)
-        .filter(
-            models.Download.synced_playlist_id.is_(None),
-            models.Download.status == "Downloading",
-        )
-        .count()
-    )
-    done = (
-        db.query(models.Download)
-        .filter(
-            models.Download.synced_playlist_id.is_(None),
-            models.Download.status == "Completed",
-        )
-        .count()
-    )
-    errors = (
-        db.query(models.Download)
-        .filter(
-            models.Download.synced_playlist_id.is_(None),
-            models.Download.status == "Failed",
-        )
-        .count()
-    )
+
+    # 2. Status filter
+    if status_str and status_str != "all":
+        if status_str == "downloading":
+            query = query.filter(
+                models.Download.status.in_(["Downloading", "Queued", "Fetching Metadata"])
+            )
+        else:
+            query = query.filter(models.Download.status.ilike(status_str))
+
+    # 3. Total count & pagination bounds
+    total_count = query.count()
+    total_pages = max(1, math.ceil(total_count / ps_val))
+    current_page = max(1, min(p_val, total_pages))
+    offset = (current_page - 1) * ps_val
+    start_item = offset + 1 if total_count > 0 else 0
+    end_item = min(offset + ps_val, total_count)
+
+    # 4. Sorting
+    allowed_sort = {
+        "downloaded_at": models.Download.downloaded_at,
+        "id": models.Download.id,
+        "title": models.Download.title,
+        "artist": models.Download.artist,
+        "status": models.Download.status,
+    }
+    sort_col = allowed_sort.get(sort_by_str, models.Download.downloaded_at)
+    if order_str == "asc":
+        query = query.order_by(sort_col.asc(), models.Download.id.asc())
+    else:
+        query = query.order_by(sort_col.desc(), models.Download.id.desc())
+
+    # 5. Fetch page slice
+    tracks = query.offset(offset).limit(ps_val).all()
 
     grouped_jobs: dict[str, list] = {}
     for t in tracks:
@@ -477,24 +539,24 @@ async def api_tracks(request: Request, db: Session = Depends(get_db)):
                     or "Queued" in statuses
                     or "Fetching Metadata" in statuses
                 ):
-                    status = "Downloading"
+                    job_status = "Downloading"
                 elif all(s == "Deleted" for s in statuses):
-                    status = "Deleted"
+                    job_status = "Deleted"
                 elif all(s == "Aborted" for s in statuses):
-                    status = "Aborted"
+                    job_status = "Aborted"
                 elif all(s == "Failed" for s in statuses):
-                    status = "Failed"
+                    job_status = "Failed"
                 elif "Completed" in statuses:
-                    status = "Completed"
+                    job_status = "Completed"
                 else:
-                    status = "Completed"
+                    job_status = "Completed"
 
                 display_items.append(
                     {
                         "type": "playlist",
                         "title": t.job_title,
                         "job_id": t.job_id,
-                        "status": status,
+                        "status": job_status,
                         "tracks": job_tracks,
                     }
                 )
@@ -508,6 +570,16 @@ async def api_tracks(request: Request, db: Session = Depends(get_db)):
             "done": done,
             "errors": errors,
             "enable_browser_downloads": enable_browser_downloads,
+            "q": q_str,
+            "status": status_str,
+            "sort_by": sort_by_str,
+            "order": order_str,
+            "page": current_page,
+            "page_size": ps_val,
+            "total_pages": total_pages,
+            "total_items": total_count,
+            "start_item": start_item,
+            "end_item": end_item,
         },
     )
 
@@ -755,7 +827,7 @@ async def delete_job(request: Request, job_id: str, db: Session = Depends(get_db
 
 async def _render_tracks(request: Request, db: Session) -> HTMLResponse:
     """Re-renders the full track list partial (shared by abort & other endpoints)."""
-    return await api_tracks(request, db)
+    return await api_tracks(request, db=db)
 
 
 # SYNCED PLAYLISTS API ENDPOINTS

@@ -13,6 +13,36 @@
     </div>
 </div>
 
+<div id="filter-inputs-container" hx-swap-oob="true">
+    <input type="hidden" name="status" id="filter-status" value="{{ status }}">
+    <input type="hidden" name="sort_by" id="filter-sort-by" value="{{ sort_by }}">
+    <input type="hidden" name="order" id="filter-order" value="{{ order }}">
+    <input type="hidden" name="page" id="filter-page" value="{{ page }}">
+    <input type="hidden" name="page_size" id="filter-page-size" value="{{ page_size }}">
+</div>
+
+<div id="status-pills-container" hx-swap-oob="true" class="flex flex-wrap gap-1.5 items-center">
+    {% set pills = [
+        ('all', 'All'),
+        ('downloading', 'Downloading'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+        ('aborted', 'Aborted'),
+        ('deleted', 'Deleted')
+    ] %}
+    {% for val, label in pills %}
+        <button type="button"
+            onclick="document.getElementById('filter-status').value='{{ val }}'; document.getElementById('filter-page').value='1';"
+            hx-get="/api/tracks"
+            hx-target="#tracks-table-container"
+            hx-include="#history-filter-form"
+            hx-vals='{"status": "{{ val }}", "page": "1"}'
+            class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors {% if status == val %}bg-[#d40060] text-white font-semibold shadow-sm{% else %}bg-[#1e1e24] text-[#a1a1aa] hover:text-white hover:bg-[#3f3f46] border border-[#3f3f46]{% endif %}">
+            {{ label }}
+        </button>
+    {% endfor %}
+</div>
+
 {% macro status_badge(status) %}
     {% if status == 'Queued' %}
         <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-900/30 text-blue-400 border border-blue-800/50">
@@ -41,20 +71,47 @@
     {% endif %}
 {% endmacro %}
 
+{% macro sort_header(label, field_name, width_class="w-auto") %}
+    {% set is_active = (sort_by == field_name) %}
+    {% set next_order = 'desc' if (is_active and order == 'asc') else 'asc' %}
+    <th class="px-6 py-4 {{ width_class }} cursor-pointer select-none hover:text-white transition-colors group"
+        onclick="document.getElementById('filter-sort-by').value='{{ field_name }}'; document.getElementById('filter-order').value='{{ next_order }}'; document.getElementById('filter-page').value='1';"
+        hx-get="/api/tracks"
+        hx-target="#tracks-table-container"
+        hx-include="#history-filter-form"
+        hx-vals='{"sort_by": "{{ field_name }}", "order": "{{ next_order }}", "page": "1"}'>
+        <div class="flex items-center gap-1.5">
+            <span>{{ label }}</span>
+            <span class="inline-flex flex-col text-[10px] leading-none">
+                {% if is_active %}
+                    {% if order == 'asc' %}
+                        <svg class="w-3.5 h-3.5 text-[#d40060]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"></path></svg>
+                    {% else %}
+                        <svg class="w-3.5 h-3.5 text-[#d40060]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
+                    {% endif %}
+                {% else %}
+                    <svg class="w-3.5 h-3.5 text-[#71717a] opacity-40 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 4v12m0 0l4-4m-4 4l-4-4"></path></svg>
+                {% endif %}
+            </span>
+        </div>
+    </th>
+{% endmacro %}
+
 <table class="w-full text-left border-collapse table-fixed">
     <thead class="bg-[#2a2a32] text-[#d1d5db] font-semibold text-sm border-b border-[#3f3f46]">
         <tr>
-            <th class="px-6 py-4 w-5/12">Title</th>
-            <th class="px-6 py-4 w-3/12">Artist</th>
-            <th class="px-6 py-4 w-2/12">Status</th>
-            <th class="px-6 py-4 w-2/12 text-right">Actions</th>
+            {{ sort_header('Title', 'title', 'w-4/12') }}
+            {{ sort_header('Artist', 'artist', 'w-3/12') }}
+            {{ sort_header('Status', 'status', 'w-2/12') }}
+            {{ sort_header('Date', 'downloaded_at', 'w-2/12') }}
+            <th class="px-6 py-4 w-1/12 text-right">Actions</th>
         </tr>
     </thead>
 
     {% if not display_items %}
     <tbody class="divide-y divide-[#3f3f46] text-sm">
         <tr class="hover:bg-[#2a2a32] transition-colors group">
-            <td colspan="4" class="px-6 py-8 text-center">
+            <td colspan="5" class="px-6 py-8 text-center">
                 <span class="font-medium text-[#a1a1aa]">No tracks found.</span>
             </td>
         </tr>
@@ -65,17 +122,21 @@
         {% if item.type == 'track' %}
             {% set track = item.item %}
             <tbody class="divide-y divide-[#3f3f46] text-sm">
-                <tr class="hover:bg-[#2a2a32] transition-colors group" data-title="{{ track.title | lower | e }}" data-artist="{{ track.artist | lower | e }}" x-show="search === '' || $el.dataset.title.includes(search.toLowerCase()) || $el.dataset.artist.includes(search.toLowerCase())">
+                <tr class="hover:bg-[#2a2a32] transition-colors group">
                     <td class="px-6 py-4 break-words">
                         <span class="font-bold text-white">{{ track.title }}</span>
                     </td>
                     <td class="px-6 py-4 break-words text-[#a1a1aa]">{{ track.artist }}</td>
                     <td class="px-6 py-4">{{ status_badge(track.status) }}</td>
+                    <td class="px-6 py-4 text-xs text-[#a1a1aa] whitespace-nowrap">
+                        {{ track.downloaded_at.strftime('%Y-%m-%d %H:%M') if track.downloaded_at else '—' }}
+                    </td>
                     <td class="px-6 py-4 whitespace-nowrap flex justify-end items-center gap-1.5">
                         {% if track.status in ['Queued', 'Downloading'] %}
                         <button class="p-1.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-[#3f3f46] transition-colors" title="Abort Download"
                             hx-post="/api/tracks/{{ track.id }}/abort"
                             hx-target="#tracks-table-container"
+                            hx-include="#history-filter-form"
                             hx-swap="innerHTML">
                             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                         </button>
@@ -95,6 +156,7 @@
                         <button class="p-1.5 rounded-lg text-[#a1a1aa] hover:text-red-500 hover:bg-[#3f3f46] transition-colors" title="Delete Track" 
                             hx-post="/api/tracks/{{ track.id }}/delete" 
                             hx-target="#tracks-table-container" 
+                            hx-include="#history-filter-form"
                             hx-swap="innerHTML">
                             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                         </button>
@@ -105,7 +167,7 @@
         {% else %}
             <tbody class="divide-y divide-[#3f3f46] text-sm">
                 <!-- Parent Playlist Row -->
-                <tr class="hover:bg-[#2a2a32] transition-colors group cursor-pointer bg-[#24242b]" @click="expandedPlaylists['{{ item.job_id }}'] = !expandedPlaylists['{{ item.job_id }}']" data-title="{{ item.title | lower | e }}" x-show="search === '' || $el.dataset.title.includes(search.toLowerCase())">
+                <tr class="hover:bg-[#2a2a32] transition-colors group cursor-pointer bg-[#24242b]" @click="expandedPlaylists['{{ item.job_id }}'] = !expandedPlaylists['{{ item.job_id }}']">
                     <td class="px-6 py-4 break-words">
                         <div class="flex items-start gap-2">
                             <svg class="w-5 h-5 text-[#a1a1aa] transition-transform duration-200 shrink-0 mt-0.5" :class="expandedPlaylists['{{ item.job_id }}'] ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
@@ -116,12 +178,16 @@
                     </td>
                     <td class="px-6 py-4 text-[#a1a1aa]">Playlist</td>
                     <td class="px-6 py-4">{{ status_badge(item.status) }}</td>
+                    <td class="px-6 py-4 text-xs text-[#a1a1aa] whitespace-nowrap">
+                        {{ item.tracks[0].downloaded_at.strftime('%Y-%m-%d %H:%M') if item.tracks and item.tracks[0].downloaded_at else '—' }}
+                    </td>
                     <td class="px-6 py-4 whitespace-nowrap flex justify-end items-center gap-1.5">
                         {% if item.status in ['Downloading', 'Queued'] %}
                         <button class="p-1.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-[#3f3f46] transition-colors" title="Abort Playlist Download"
                             hx-post="/api/jobs/{{ item.job_id }}/abort"
                             @click.stop
                             hx-target="#tracks-table-container"
+                            hx-include="#history-filter-form"
                             hx-swap="innerHTML">
                             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                         </button>
@@ -130,6 +196,7 @@
                             hx-delete="/api/jobs/{{ item.job_id }}"
                             @click.stop
                             hx-target="#tracks-table-container"
+                            hx-include="#history-filter-form"
                             hx-swap="innerHTML">
                             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                         </button>
@@ -138,6 +205,7 @@
                             hx-post="/api/jobs/{{ item.job_id }}/delete"
                             @click.stop
                             hx-target="#tracks-table-container"
+                            hx-include="#history-filter-form"
                             hx-swap="innerHTML">
                             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                         </button>
@@ -147,17 +215,21 @@
 
                 <!-- Child Track Rows -->
                 {% for track in item.tracks %}
-                <tr class="hover:bg-[#3f3f46] transition-colors group bg-[#16161b]" data-title="{{ track.title | lower | e }}" data-artist="{{ track.artist | lower | e }}" x-show="expandedPlaylists['{{ item.job_id }}'] && (search === '' || $el.dataset.title.includes(search.toLowerCase()) || $el.dataset.artist.includes(search.toLowerCase()))" x-cloak>
+                <tr class="hover:bg-[#3f3f46] transition-colors group bg-[#16161b]" x-show="expandedPlaylists['{{ item.job_id }}']" x-cloak>
                     <td class="px-6 py-4 pl-14 break-words">
                         <span class="font-medium text-white">{{ track.title }}</span>
                     </td>
                     <td class="px-6 py-4 break-words text-[#a1a1aa]">{{ track.artist }}</td>
                     <td class="px-6 py-4">{{ status_badge(track.status) }}</td>
+                    <td class="px-6 py-4 text-xs text-[#a1a1aa] whitespace-nowrap">
+                        {{ track.downloaded_at.strftime('%Y-%m-%d %H:%M') if track.downloaded_at else '—' }}
+                    </td>
                     <td class="px-6 py-4 whitespace-nowrap flex justify-end items-center gap-1.5">
                         {% if track.status in ['Queued', 'Downloading'] %}
                         <button class="p-1.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-[#3f3f46] transition-colors" title="Abort Download"
                             hx-post="/api/tracks/{{ track.id }}/abort"
                             hx-target="#tracks-table-container"
+                            hx-include="#history-filter-form"
                             hx-swap="innerHTML">
                             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                         </button>
@@ -177,6 +249,7 @@
                         <button class="p-1.5 rounded-lg text-[#a1a1aa] hover:text-red-500 hover:bg-[#3f3f46] transition-colors" title="Delete Track" 
                             hx-post="/api/tracks/{{ track.id }}/delete" 
                             hx-target="#tracks-table-container" 
+                            hx-include="#history-filter-form"
                             hx-swap="innerHTML">
                             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                         </button>
@@ -189,3 +262,65 @@
     {% endfor %}
     {% endif %}
 </table>
+
+<!-- Pagination Controls Footer -->
+<div class="px-6 py-4 border-t border-[#3f3f46] flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-[#a1a1aa] bg-[#24242b]">
+    <div class="flex items-center gap-4">
+        <span>Showing {{ start_item }}–{{ end_item }} of {{ total_items }}</span>
+        <div class="flex items-center gap-2 text-xs">
+            <span>Per page:</span>
+            <select name="page_size"
+                onchange="document.getElementById('filter-page-size').value=this.value; document.getElementById('filter-page').value='1';"
+                hx-get="/api/tracks"
+                hx-target="#tracks-table-container"
+                hx-include="#history-filter-form"
+                class="bg-[#111115] border border-[#3f3f46] rounded-lg px-2.5 py-1 text-white text-xs focus:outline-none focus:border-[#d40060]">
+                <option value="25" {% if page_size == 25 %}selected{% endif %}>25</option>
+                <option value="50" {% if page_size == 50 %}selected{% endif %}>50</option>
+                <option value="100" {% if page_size == 100 %}selected{% endif %}>100</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="flex items-center gap-2">
+        {% if page > 1 %}
+        <button type="button"
+            onclick="document.getElementById('filter-page').value='{{ page - 1 }}';"
+            hx-get="/api/tracks"
+            hx-target="#tracks-table-container"
+            hx-include="#history-filter-form"
+            hx-vals='{"page": "{{ page - 1 }}"}'
+            class="px-3 py-1.5 rounded-lg bg-[#2a2a32] hover:bg-[#3f3f46] text-white text-xs font-medium transition-colors flex items-center gap-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+            <span>Previous</span>
+        </button>
+        {% else %}
+        <button type="button" disabled
+            class="px-3 py-1.5 rounded-lg bg-[#24242b] text-[#71717a] border border-[#3f3f46]/50 text-xs font-medium cursor-not-allowed flex items-center gap-1 opacity-50">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+            <span>Previous</span>
+        </button>
+        {% endif %}
+
+        <span class="text-xs text-[#a1a1aa] px-2">Page {{ page }} of {{ total_pages }}</span>
+
+        {% if page < total_pages %}
+        <button type="button"
+            onclick="document.getElementById('filter-page').value='{{ page + 1 }}';"
+            hx-get="/api/tracks"
+            hx-target="#tracks-table-container"
+            hx-include="#history-filter-form"
+            hx-vals='{"page": "{{ page + 1 }}"}'
+            class="px-3 py-1.5 rounded-lg bg-[#2a2a32] hover:bg-[#3f3f46] text-white text-xs font-medium transition-colors flex items-center gap-1">
+            <span>Next</span>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+        </button>
+        {% else %}
+        <button type="button" disabled
+            class="px-3 py-1.5 rounded-lg bg-[#24242b] text-[#71717a] border border-[#3f3f46]/50 text-xs font-medium cursor-not-allowed flex items-center gap-1 opacity-50">
+            <span>Next</span>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+        </button>
+        {% endif %}
+    </div>
+</div>
