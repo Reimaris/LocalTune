@@ -16,7 +16,7 @@ on:
       tag:
         description: 'Release tag to upload asset to'
         required: false
-        default: 'v2.6.3-rc.1'
+        default: 'v2.6.3-rc.2'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.release.tag_name || github.ref_name }}
