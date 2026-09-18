@@ -879,11 +879,13 @@ def spawn_backend_process(
 
     def log_streamer(p: subprocess.Popen[str], path: str) -> None:
         try:
-            with open(path, "a", encoding="utf-8") as f:
-                if p.stdout:
-                    for line in iter(p.stdout.readline, ""):
-                        f.write(line)
-                        f.flush()
+            if p.stdout:
+                for line in iter(p.stdout.readline, ""):
+                    try:
+                        with open(path, "a", encoding="utf-8") as f:
+                            f.write(line)
+                    except Exception:
+                        pass
         except Exception:
             pass
 

@@ -8,6 +8,20 @@ from pathlib import Path
 log_queue: asyncio.Queue[str] = asyncio.Queue()
 
 
+class SafeTimedRotatingFileHandler(TimedRotatingFileHandler):
+    """
+    TimedRotatingFileHandler that safely handles Windows file locking on rollover.
+    If the file is temporarily locked by another process (such as a viewer or supervisor),
+    suppress PermissionError to avoid log storming and retry on subsequent cycles.
+    """
+
+    def doRollover(self) -> None:
+        try:
+            super().doRollover()
+        except PermissionError:
+            pass
+
+
 class AsyncQueueHandler(logging.Handler):
     """
     A custom logging handler that puts log messages into an asyncio queue.
@@ -69,7 +83,7 @@ def setup_logging(log_level: str = "INFO"):
     console_handler.setFormatter(formatter)
 
     # File Handler for daily rotation (midnight) keeping 5 backups
-    file_handler = TimedRotatingFileHandler(
+    file_handler = SafeTimedRotatingFileHandler(
         filename=log_dir / "localtune.log",
         when="midnight",
         interval=1,

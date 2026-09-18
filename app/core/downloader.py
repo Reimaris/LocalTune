@@ -2,7 +2,9 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,6 +19,32 @@ from app.db import models
 from app.db.database import SessionLocal
 
 logger = logging.getLogger(__name__)
+
+
+def get_ytdlp_cmd() -> list[str]:
+    """Returns the executable command prefix for yt-dlp.
+
+    Prioritizes 'yt-dlp' from PATH if available (Docker / Linux venvs),
+    otherwise falls back to invoking the module via the active Python runtime
+    (sys.executable -m yt_dlp), supporting standalone embedded Windows environments.
+    """
+    if shutil.which("yt-dlp"):
+        return ["yt-dlp"]
+    return [sys.executable, "-m", "yt_dlp"]
+
+
+def get_spotdl_cmd() -> list[str]:
+    """Returns the executable command prefix for spotdl.
+
+    Prioritizes 'spotdl' from PATH if available (Docker / Linux venvs),
+    otherwise falls back to invoking the module via the active Python runtime
+    (sys.executable -m spotdl), supporting standalone embedded Windows environments.
+    """
+    if shutil.which("spotdl"):
+        return ["spotdl"]
+    return [sys.executable, "-m", "spotdl"]
+
+
 def get_download_dir() -> Path:
     env_dir = os.getenv("DOWNLOAD_DIR")
     if env_dir:
@@ -354,7 +382,7 @@ def handle_spotify(
 
         # Generate metadata (single blocking call — fast, not per-track abortable)
         cmd = (
-            ["spotdl"]
+            get_spotdl_cmd()
             + auth_args
             + [
                 "--yt-dlp-args",
@@ -462,7 +490,7 @@ def handle_spotify(
                 json.dump([track], f)
 
             cmd_dl = (
-                ["spotdl"]
+                get_spotdl_cmd()
                 + auth_args
                 + [
                     "--yt-dlp-args",
@@ -572,7 +600,7 @@ def handle_ytdlp(
     is_on_demand = synced_playlist_id is None
 
     try:
-        cmd_meta = ["yt-dlp", "--yes-playlist", "--ignore-errors"]
+        cmd_meta = get_ytdlp_cmd() + ["--yes-playlist", "--ignore-errors"]
         if is_youtube:
             if media_type == "video":
                 cmd_meta.extend(
@@ -683,7 +711,7 @@ def handle_ytdlp(
                 if is_playlist and sanitized_playlist_title
                 else f"{DOWNLOAD_DIR}/%(title)s.%(ext)s"
             )
-            cmd_dl = ["yt-dlp", "--ignore-errors"]
+            cmd_dl = get_ytdlp_cmd() + ["--ignore-errors"]
             if is_youtube:
                 if media_type == "video":
                     cmd_dl.extend(
@@ -845,7 +873,7 @@ def fetch_playlist_title(url: str, db: Session | None = None) -> tuple[str, bool
                         "--client-secret",
                         str(settings.spotify_client_secret).strip(),
                     ]
-            cmd = ["spotdl"] + auth_args + ["save", url, "--save-file", temp_file]
+            cmd = get_spotdl_cmd() + auth_args + ["save", url, "--save-file", temp_file]
             subprocess.run(
                 cmd,
                 check=True,
@@ -872,17 +900,19 @@ def fetch_playlist_title(url: str, db: Session | None = None) -> tuple[str, bool
         return "Synced Spotify Playlist", False
     else:
         try:
-            cmd = ["yt-dlp", "--yes-playlist", "-J", "--flat-playlist", url]
+            cmd = get_ytdlp_cmd() + ["--yes-playlist", "-J", "--flat-playlist", url]
             if re.search(r"(youtube\.com|youtu\.be)", url):
-                cmd = [
-                    "yt-dlp",
-                    "--yes-playlist",
-                    "--extractor-args",
-                    "youtube:player_client=android,web,ios",
-                    "-J",
-                    "--flat-playlist",
-                    url,
-                ]
+                cmd = (
+                    get_ytdlp_cmd()
+                    + [
+                        "--yes-playlist",
+                        "--extractor-args",
+                        "youtube:player_client=android,web,ios",
+                        "-J",
+                        "--flat-playlist",
+                        url,
+                    ]
+                )
             result = subprocess.run(
                 cmd,
                 check=True,
@@ -937,7 +967,7 @@ def sync_playlist_job(synced_playlist_id: int, db: Session) -> dict:
                         "--client-secret",
                         str(settings.spotify_client_secret).strip(),
                     ]
-                cmd = ["spotdl"] + auth_args + ["save", url, "--save-file", temp_file]
+                cmd = get_spotdl_cmd() + auth_args + ["save", url, "--save-file", temp_file]
                 subprocess.run(
                     cmd,
                     check=False,
@@ -974,7 +1004,7 @@ def sync_playlist_job(synced_playlist_id: int, db: Session) -> dict:
                     os.remove(temp_file)
         else:
             is_youtube = bool(re.search(r"(youtube\.com|youtu\.be)", url))
-            cmd = ["yt-dlp", "--yes-playlist", "--ignore-errors"]
+            cmd = get_ytdlp_cmd() + ["--yes-playlist", "--ignore-errors"]
             if is_youtube:
                 cmd.extend(
                     ["--extractor-args", "youtube:player_client=android,web,ios"]
