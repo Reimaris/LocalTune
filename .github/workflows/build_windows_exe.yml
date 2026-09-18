@@ -1,14 +1,6 @@
 name: Build Windows Executable & Standalone Bundle
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'windows_launcher/**'
-      - 'app/**'
-      - 'requirements.txt'
-      - '.github/workflows/build_windows_exe.yml'
   release:
     types: [published]
   workflow_dispatch:

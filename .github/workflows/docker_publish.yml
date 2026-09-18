@@ -2,13 +2,6 @@ name: Publish Docker Image
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - 'app/**'
-      - 'Dockerfile'
-      - 'requirements.txt'
-      - '.github/workflows/docker_publish.yml'
     tags:
       - 'v*'
   workflow_dispatch:
@@ -45,10 +38,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
             type=ref,event=tag
-            type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
