@@ -9,6 +9,52 @@
     <script src="/static/vendor/tailwind.js"></script>
     <script src="/static/vendor/htmx.min.js"></script>
     <script defer src="/static/vendor/alpine.min.js"></script>
+    <script>
+        function formatDeviceTimes(container) {
+            var root = container || document;
+            var elements = root.querySelectorAll ? Array.from(root.querySelectorAll('.device-time')) : [];
+            if (root.matches && root.matches('.device-time')) {
+                elements.push(root);
+            }
+            elements.forEach(function(el) {
+                var utc = el.getAttribute('datetime') || el.dataset.utc;
+                if (!utc) return;
+                var d = new Date(utc);
+                if (isNaN(d.getTime())) return;
+
+                if (el.dataset.format === 'short') {
+                    el.textContent = d.toLocaleString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false
+                    });
+                } else {
+                    var pad = function(n) { return String(n).padStart(2, '0'); };
+                    var year = d.getFullYear();
+                    var month = pad(d.getMonth() + 1);
+                    var day = pad(d.getDate());
+                    var hours = pad(d.getHours());
+                    var minutes = pad(d.getMinutes());
+                    el.textContent = year + '-' + month + '-' + day + ' ' + hours + ':' + minutes;
+                }
+                el.title = d.toLocaleString();
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            formatDeviceTimes();
+        });
+
+        document.addEventListener('htmx:load', function(evt) {
+            formatDeviceTimes(evt.detail.elt);
+        });
+
+        document.addEventListener('htmx:afterSwap', function(evt) {
+            formatDeviceTimes(evt.detail.target);
+        });
+    </script>
     <style>
         body {
             background-color: #1e1e24;

@@ -146,7 +146,11 @@
                     <td class="px-6 py-4 break-words text-[#a1a1aa]">{{ track.artist }}</td>
                     <td class="px-6 py-4">{{ status_badge(track.status) }}</td>
                     <td class="px-6 py-4 text-xs text-[#a1a1aa] whitespace-nowrap">
-                        {{ track.downloaded_at.strftime('%Y-%m-%d %H:%M') if track.downloaded_at else '—' }}
+                        {% if track.downloaded_at %}
+                        <time datetime="{{ track.downloaded_at | utc_iso }}" class="device-time">{{ track.downloaded_at.strftime('%Y-%m-%d %H:%M') }}</time>
+                        {% else %}
+                        —
+                        {% endif %}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap flex justify-end items-center gap-1.5">
                         {% if track.status in ['Queued', 'Downloading'] %}
@@ -196,7 +200,11 @@
                     <td class="px-6 py-4 text-[#a1a1aa]">Playlist</td>
                     <td class="px-6 py-4">{{ status_badge(item.status) }}</td>
                     <td class="px-6 py-4 text-xs text-[#a1a1aa] whitespace-nowrap">
-                        {{ item.tracks[0].downloaded_at.strftime('%Y-%m-%d %H:%M') if item.tracks and item.tracks[0].downloaded_at else '—' }}
+                        {% if item.tracks and item.tracks[0].downloaded_at %}
+                        <time datetime="{{ item.tracks[0].downloaded_at | utc_iso }}" class="device-time">{{ item.tracks[0].downloaded_at.strftime('%Y-%m-%d %H:%M') }}</time>
+                        {% else %}
+                        —
+                        {% endif %}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap flex justify-end items-center gap-1.5">
                         {% if item.status in ['Downloading', 'Queued'] %}
@@ -239,7 +247,11 @@
                     <td class="px-6 py-4 break-words text-[#a1a1aa]">{{ track.artist }}</td>
                     <td class="px-6 py-4">{{ status_badge(track.status) }}</td>
                     <td class="px-6 py-4 text-xs text-[#a1a1aa] whitespace-nowrap">
-                        {{ track.downloaded_at.strftime('%Y-%m-%d %H:%M') if track.downloaded_at else '—' }}
+                        {% if track.downloaded_at %}
+                        <time datetime="{{ track.downloaded_at | utc_iso }}" class="device-time">{{ track.downloaded_at.strftime('%Y-%m-%d %H:%M') }}</time>
+                        {% else %}
+                        —
+                        {% endif %}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap flex justify-end items-center gap-1.5">
                         {% if track.status in ['Queued', 'Downloading'] %}

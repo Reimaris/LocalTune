@@ -83,7 +83,7 @@
                     <span class="text-[#a1a1aa] block text-[10px] uppercase font-semibold tracking-wider">Last Synced</span>
                     <span class="font-medium text-white truncate block">
                         {% if sp.last_synced_at %}
-                            {{ sp.last_synced_at.strftime('%b %d, %H:%M') }}
+                            <time datetime="{{ sp.last_synced_at | utc_iso }}" class="device-time" data-format="short">{{ sp.last_synced_at.strftime('%b %d, %H:%M') }}</time>
                         {% else %}
                             Never
                         {% endif %}

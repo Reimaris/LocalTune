@@ -7,6 +7,7 @@ import subprocess
 import sys
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import (
@@ -169,6 +170,18 @@ except OSError as e:
     logger.warning(f"Could not mount downloads directory {downloads_dir}: {e}")
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+
+
+def to_utc_iso(dt: datetime | None) -> str:
+    """Format datetime as UTC ISO-8601 string for client-side device time conversion."""
+    if not dt:
+        return ""
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc)
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+templates.env.filters["utc_iso"] = to_utc_iso
 
 
 @app.get("/health")
