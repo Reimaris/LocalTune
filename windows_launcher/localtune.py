@@ -354,8 +354,10 @@ def build_backend_env(project_dir: str | None = None) -> dict[str, str]:
 
 
 def parse_version_tuple(version_str: str) -> tuple[int, ...]:
-    """Parses a version string like 'v2.5.0' into an integer tuple (2, 5, 0)."""
+    """Parses a version string like 'v2.5.0' or 'v2.6.3-rc.1' into an integer tuple (2, 5, 0)."""
     cleaned = version_str.strip().lstrip("v")
+    if "-" in cleaned:
+        cleaned = cleaned.split("-")[0]
     try:
         return tuple(int(p) for p in cleaned.split("."))
     except ValueError:
@@ -376,12 +378,12 @@ def get_local_version(project_dir: str | None = None) -> str:
         try:
             with open(base_html, "r", encoding="utf-8") as f:
                 content = f.read()
-            match = re.search(r"\b(v\d+\.\d+\.\d+)\b", content)
+            match = re.search(r"\b(v\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?)\b", content)
             if match:
                 return match.group(1)
         except Exception:
             pass
-    return "v2.6.2"
+    return "v2.6.3-rc.1"
 
 
 def check_github_release(repo: str = "Reimaris/LocalTune", timeout: float = 3.0) -> dict[str, Any] | None:

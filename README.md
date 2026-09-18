@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v2.6.2-pink" alt="Version" />
+  <img src="https://img.shields.io/badge/version-v2.6.3--rc.1-pink" alt="Version" />
   <img src="https://img.shields.io/badge/windows-standalone_ready-purple" alt="Windows Standalone" />
   <img src="https://img.shields.io/badge/docker-ready-blue" alt="Docker Ready" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
