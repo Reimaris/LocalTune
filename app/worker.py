@@ -1,5 +1,6 @@
 import logging
 import re
+import subprocess
 
 from sqlalchemy.orm import Session
 
@@ -64,7 +65,13 @@ def process_download(
         send_telegram_notification(f"{title}\n\n{metadata_str}")
 
     except Exception as e:
-        logger.error(f"Worker failed processing {url}: {e}", exc_info=True)
+        if isinstance(e, subprocess.CalledProcessError) and e.stderr:
+            logger.error(
+                f"Worker failed processing {url}: {e}\nSubprocess output:\n{e.stderr.strip()}",
+                exc_info=True,
+            )
+        else:
+            logger.error(f"Worker failed processing {url}: {e}", exc_info=True)
         # Mark all tracks in this job as failed
         failed_tracks = (
             db.query(models.Download).filter(models.Download.job_id == job_id).all()
@@ -137,7 +144,13 @@ def retry_single_track(track_db_id: int, db: Session | None = None):
                 target_playlist_title=track.job_title,
             )
     except Exception as e:
-        logger.error(f"Failed retrying track {track_db_id}: {e}", exc_info=True)
+        if isinstance(e, subprocess.CalledProcessError) and e.stderr:
+            logger.error(
+                f"Failed retrying track {track_db_id}: {e}\nSubprocess output:\n{e.stderr.strip()}",
+                exc_info=True,
+            )
+        else:
+            logger.error(f"Failed retrying track {track_db_id}: {e}", exc_info=True)
         track = db.query(models.Download).filter(models.Download.id == track_db_id).first()
         if track:
             track.status = "Failed"

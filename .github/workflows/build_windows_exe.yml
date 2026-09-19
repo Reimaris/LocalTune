@@ -46,6 +46,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path "staging\LocalTune\config\logs"
           New-Item -ItemType Directory -Force -Path "staging\LocalTune\downloads"
           Copy-Item "windows_launcher\dist\LocalTune.exe" -Destination "staging\LocalTune\"
+          Copy-Item -Recurse "windows_launcher" -Destination "staging\LocalTune\"
           Copy-Item -Recurse "app" -Destination "staging\LocalTune\"
           Copy-Item "requirements.txt" -Destination "staging\LocalTune\"
           Copy-Item "README.md" -Destination "staging\LocalTune\"

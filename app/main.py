@@ -465,7 +465,7 @@ async def settings_page(request: Request, db: Session = Depends(get_db)):
 
     ytdlp_version = get_installed_ytdlp_version()
 
-    from windows_launcher.localtune import load_launcher_config
+    from app.core.launcher_config import load_launcher_config
 
     launcher_cfg = load_launcher_config()
 
@@ -483,7 +483,7 @@ async def settings_page(request: Request, db: Session = Depends(get_db)):
 
 @app.get("/api/settings/launcher-config")
 async def get_launcher_config_endpoint():
-    from windows_launcher.localtune import load_launcher_config
+    from app.core.launcher_config import load_launcher_config
 
     cfg = load_launcher_config()
     return JSONResponse(
@@ -498,7 +498,7 @@ async def get_launcher_config_endpoint():
 async def update_launcher_config_endpoint(
     include_prereleases: str | None = Form(None),
 ):
-    from windows_launcher.localtune import load_launcher_config, save_launcher_config
+    from app.core.launcher_config import load_launcher_config, save_launcher_config
 
     cfg = load_launcher_config()
     cfg["include_prereleases"] = bool(include_prereleases)

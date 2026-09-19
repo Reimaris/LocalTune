@@ -818,13 +818,49 @@ def handle_ytdlp(
 
         result = subprocess.run(
             cmd_meta,
-            check=True,
+            check=False,
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
             creationflags=SUBPROCESS_CREATIONFLAGS,
         )
+
+        if result.returncode != 0:
+            err_msg = (result.stderr or result.stdout or "Unknown yt-dlp error").strip()
+            # If failed with custom extractor args, attempt fallback to standard extractor args
+            if is_youtube and ("--extractor-args" in cmd_meta):
+                logger.warning(
+                    f"yt-dlp extraction with custom player_client failed (code {result.returncode}): {err_msg}. "
+                    "Retrying with standard yt-dlp extraction..."
+                )
+                cmd_meta_standard = get_ytdlp_cmd() + [
+                    "--yes-playlist",
+                    "--ignore-errors",
+                    "-J",
+                    "--flat-playlist",
+                    url,
+                ]
+                fallback_result = subprocess.run(
+                    cmd_meta_standard,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    creationflags=SUBPROCESS_CREATIONFLAGS,
+                )
+                if fallback_result.returncode == 0:
+                    result = fallback_result
+                else:
+                    fb_err = (fallback_result.stderr or fallback_result.stdout or "Unknown yt-dlp error").strip()
+                    logger.error(
+                        f"yt-dlp standard metadata extraction fallback also failed (code {fallback_result.returncode}): {fb_err}"
+                    )
+                    raise RuntimeError(f"yt-dlp metadata extraction failed: {fb_err}")
+            else:
+                logger.error(f"yt-dlp metadata extraction failed (code {result.returncode}): {err_msg}")
+                raise RuntimeError(f"yt-dlp metadata extraction failed: {err_msg}")
 
         # Delete placeholder now that we have real metadata
         placeholder = (
@@ -1143,7 +1179,7 @@ def fetch_playlist_title(url: str, db: Session | None = None) -> tuple[str, bool
                 )
             result = subprocess.run(
                 cmd,
-                check=True,
+                check=False,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -1151,6 +1187,36 @@ def fetch_playlist_title(url: str, db: Session | None = None) -> tuple[str, bool
                 timeout=120,
                 creationflags=SUBPROCESS_CREATIONFLAGS,
             )
+            if result.returncode != 0:
+                err_msg = (result.stderr or result.stdout or "").strip()
+                if "--extractor-args" in cmd:
+                    logger.warning(
+                        f"Fetching playlist title with custom player_client failed (code {result.returncode}): {err_msg}. "
+                        "Retrying with standard yt-dlp..."
+                    )
+                    cmd_std = get_ytdlp_cmd() + ["--yes-playlist", "-J", "--flat-playlist", url]
+                    fallback_result = subprocess.run(
+                        cmd_std,
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                        timeout=120,
+                        creationflags=SUBPROCESS_CREATIONFLAGS,
+                    )
+                    if fallback_result.returncode == 0:
+                        result = fallback_result
+                    else:
+                        fb_err = (fallback_result.stderr or fallback_result.stdout or "").strip()
+                        logger.error(
+                            f"Failed to fetch yt-dlp playlist title on fallback (code {fallback_result.returncode}): {fb_err}"
+                        )
+                        return "Synced Playlist", False
+                else:
+                    logger.error(f"Failed to fetch yt-dlp playlist title (code {result.returncode}): {err_msg}")
+                    return "Synced Playlist", False
+
             data = json.loads(result.stdout)
             title = data.get("title") or data.get("playlist_title") or "Synced Playlist"
             entries = data.get("entries")
