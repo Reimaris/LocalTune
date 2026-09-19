@@ -141,7 +141,17 @@
             <tbody class="divide-y divide-[#3f3f46] text-sm">
                 <tr class="hover:bg-[#2a2a32] transition-colors group">
                     <td class="px-6 py-4 break-words">
-                        <span class="font-bold text-white">{{ track.title }}</span>
+                        <div class="inline-flex items-center gap-1.5 flex-wrap">
+                            <span class="font-bold text-white">{{ track.title }}</span>
+                            {% set canonical = track | canonical_url %}
+                            {% if canonical %}
+                            <a href="{{ canonical }}" target="_blank" rel="noopener noreferrer" 
+                                class="text-[#a1a1aa] hover:text-[#d40060] transition-colors inline-flex items-center p-0.5 rounded hover:bg-[#3f3f46]"
+                                title="Open on original website">
+                                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                            </a>
+                            {% endif %}
+                        </div>
                     </td>
                     <td class="px-6 py-4 break-words text-[#a1a1aa]">{{ track.artist }}</td>
                     <td class="px-6 py-4">{{ status_badge(track.status) }}</td>
@@ -242,7 +252,17 @@
                 {% for track in item.tracks %}
                 <tr class="hover:bg-[#3f3f46] transition-colors group bg-[#16161b]" x-show="expandedPlaylists['{{ item.job_id }}']" x-cloak>
                     <td class="px-6 py-4 pl-14 break-words">
-                        <span class="font-medium text-white">{{ track.title }}</span>
+                        <div class="inline-flex items-center gap-1.5 flex-wrap">
+                            <span class="font-medium text-white">{{ track.title }}</span>
+                            {% set canonical = track | canonical_url %}
+                            {% if canonical %}
+                            <a href="{{ canonical }}" target="_blank" rel="noopener noreferrer" 
+                                class="text-[#a1a1aa] hover:text-[#d40060] transition-colors inline-flex items-center p-0.5 rounded hover:bg-[#3f3f46]"
+                                title="Open on original website">
+                                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                            </a>
+                            {% endif %}
+                        </div>
                     </td>
                     <td class="px-6 py-4 break-words text-[#a1a1aa]">{{ track.artist }}</td>
                     <td class="px-6 py-4">{{ status_badge(track.status) }}</td>

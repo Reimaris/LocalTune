@@ -19,6 +19,7 @@ class Download(Base):
     synced_playlist_id = Column(
         Integer, ForeignKey("synced_playlists.id"), nullable=True
     )
+    source_url = Column(String, nullable=True)
     downloaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 

@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 from app.core.downloader import (
     DOWNLOAD_DIR,
     fetch_playlist_title,
+    get_canonical_source_url,
     write_m3u8,
     yt_dlp_sanitize,
 )
@@ -61,6 +62,13 @@ try:
         conn.execute(
             text("ALTER TABLE downloads ADD COLUMN synced_playlist_id INTEGER")
         )
+        conn.commit()
+except OperationalError:
+    pass
+
+try:
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE downloads ADD COLUMN source_url VARCHAR"))
         conn.commit()
 except OperationalError:
     pass
@@ -222,6 +230,8 @@ def to_utc_iso(dt: datetime | None) -> str:
 
 
 templates.env.filters["utc_iso"] = to_utc_iso
+templates.env.filters["canonical_url"] = get_canonical_source_url
+templates.env.globals["get_canonical_source_url"] = get_canonical_source_url
 
 
 @app.get("/health")

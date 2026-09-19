@@ -102,6 +102,38 @@ def check_exists(db: Session, track_id: str) -> bool:
     return False
 
 
+def get_canonical_source_url(download: models.Download) -> str:
+    """Returns the canonical source webpage URL for a download record.
+
+    If source_url is already stored, returns it directly.
+    For legacy records without source_url, dynamically reconstructs the canonical
+    webpage link based on the namespaced track_id (e.g. youtube_{id}, spotify_{id}, soundcloud_{id}).
+    """
+    if download.source_url and download.source_url.strip():
+        return download.source_url.strip()
+
+    track_id = (download.track_id or "").strip()
+    if not track_id:
+        return ""
+
+    if track_id.startswith("youtube_"):
+        raw_id = track_id[len("youtube_"):]
+        if raw_id:
+            return f"https://www.youtube.com/watch?v={raw_id}"
+    elif track_id.startswith("spotify_"):
+        raw_id = track_id[len("spotify_"):]
+        if raw_id:
+            return f"https://open.spotify.com/track/{raw_id}"
+    elif track_id.startswith("soundcloud_"):
+        raw_id = track_id[len("soundcloud_"):]
+        if raw_id:
+            return f"https://soundcloud.com/track/{raw_id}"
+    elif track_id.startswith(("http://", "https://")):
+        return track_id
+
+    return ""
+
+
 def insert_download(
     db: Session,
     track_id: str,
@@ -112,6 +144,7 @@ def insert_download(
     job_id: str | None = None,
     job_title: str | None = None,
     synced_playlist_id: int | None = None,
+    source_url: str | None = None,
 ):
     """Inserts or updates a download record in the database."""
     dl = db.query(models.Download).filter(models.Download.track_id == track_id).first()
@@ -125,6 +158,8 @@ def insert_download(
         dl.job_title = job_title
         if synced_playlist_id:
             dl.synced_playlist_id = synced_playlist_id
+        if source_url:
+            dl.source_url = source_url
     else:
         dl = models.Download(
             track_id=track_id,
@@ -135,6 +170,7 @@ def insert_download(
             job_id=job_id,
             job_title=job_title,
             synced_playlist_id=synced_playlist_id,
+            source_url=source_url,
         )
         db.add(dl)
     db.commit()
@@ -438,8 +474,9 @@ def handle_spotify(
         for track in metadata:
             raw_id = track.get("song_id")
             track_id = f"spotify_{raw_id}" if raw_id else uuid.uuid4().hex
+            track_source_url = f"https://open.spotify.com/track/{raw_id}" if raw_id else url
             if not check_exists(db, track_id):
-                to_download.append((track, track_id))
+                to_download.append((track, track_id, track_source_url))
                 insert_download(
                     db,
                     track_id,
@@ -450,6 +487,7 @@ def handle_spotify(
                     job_id,
                     job_title_to_save,
                     synced_playlist_id,
+                    source_url=track_source_url,
                 )
 
         if not to_download:
@@ -459,7 +497,7 @@ def handle_spotify(
             return main_title
 
         # Per-track download loop with abort support
-        for track, track_id in to_download:
+        for track, track_id, track_source_url in to_download:
             # Check abort signal before starting each track
             if is_on_demand and download_manager.is_track_aborted(job_id, track_id):
                 logger.info(f"Track {track_id} aborted before download start.")
@@ -468,6 +506,7 @@ def handle_spotify(
                     track.get("name", "Unknown Title"),
                     track.get("artist", "Unknown Artist"),
                     None, "Aborted", job_id, job_title_to_save, synced_playlist_id,
+                    source_url=track_source_url,
                 )
                 continue
 
@@ -558,6 +597,7 @@ def handle_spotify(
                 insert_download(
                     db, track_id, title, artist, None, "Aborted",
                     job_id, job_title_to_save, synced_playlist_id,
+                    source_url=track_source_url,
                 )
                 if is_on_demand and os.path.exists(track_temp_file):
                     os.remove(track_temp_file)
@@ -568,12 +608,14 @@ def handle_spotify(
                 insert_download(
                     db, track_id, title, artist, file_path, "Completed",
                     job_id, job_title_to_save, synced_playlist_id,
+                    source_url=track_source_url,
                 )
             else:
                 logger.error(f"spotdl output file not found: {file_path}")
                 insert_download(
                     db, track_id, title, artist, None, "Failed",
                     job_id, job_title_to_save, synced_playlist_id,
+                    source_url=track_source_url,
                 )
 
             if os.path.exists(track_temp_file):
@@ -669,8 +711,16 @@ def handle_ytdlp(
                 raw_id = uuid.uuid4().hex
             track_id = f"{extractor.lower()}_{raw_id}"
 
+            # Resolve canonical URL for this track
+            track_source_url = track.get("webpage_url") or track.get("url")
+            if not track_source_url or not track_source_url.startswith("http"):
+                if is_youtube and track.get("id"):
+                    track_source_url = f"https://www.youtube.com/watch?v={track['id']}"
+                else:
+                    track_source_url = url
+
             if not check_exists(db, track_id):
-                to_download.append((track, track_id))
+                to_download.append((track, track_id, track_source_url))
                 insert_download(
                     db,
                     track_id,
@@ -681,6 +731,7 @@ def handle_ytdlp(
                     job_id,
                     job_title_to_save,
                     synced_playlist_id,
+                    source_url=track_source_url,
                 )
 
         if not to_download:
@@ -691,7 +742,7 @@ def handle_ytdlp(
 
         # Per-track download loop with abort support
         failed_count = 0
-        for track, track_id in to_download:
+        for track, track_id, track_source_url in to_download:
             # Check abort signal before starting each track
             if is_on_demand and download_manager.is_track_aborted(job_id, track_id):
                 logger.info(f"Track {track_id} aborted before download start.")
@@ -700,6 +751,7 @@ def handle_ytdlp(
                 insert_download(
                     db, track_id, title, artist, None, "Aborted",
                     job_id, job_title_to_save, synced_playlist_id,
+                    source_url=track_source_url,
                 )
                 continue
 
@@ -714,12 +766,7 @@ def handle_ytdlp(
             )
 
             # Resolve canonical URL for this track
-            target_url = track.get("webpage_url") or track.get("url")
-            if not target_url or not target_url.startswith("http"):
-                if is_youtube and track.get("id"):
-                    target_url = f"https://www.youtube.com/watch?v={track['id']}"
-                else:
-                    target_url = url
+            target_url = track_source_url
 
             # Build the yt-dlp download command for this single track
             output_tmpl = (
@@ -848,6 +895,7 @@ def handle_ytdlp(
                     job_id,
                     job_title_to_save,
                     synced_playlist_id,
+                    source_url=track_source_url,
                 )
             else:
                 failed_count += 1
@@ -862,6 +910,7 @@ def handle_ytdlp(
                     job_id,
                     job_title_to_save,
                     synced_playlist_id,
+                    source_url=track_source_url,
                 )
 
         if failed_count == len(to_download):
