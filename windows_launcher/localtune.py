@@ -356,11 +356,11 @@ def build_backend_env(project_dir: str | None = None) -> dict[str, str]:
 
 
 def parse_version_tuple(version_str: str) -> tuple[Any, ...]:
-    """Parses a version string like 'v2.5.0' or 'v2.6.4-rc.1' into a comparable tuple.
+    """Parses a version string like 'v2.5.0' or 'v2.6.4-rc.2' into a comparable tuple.
 
     Per SemVer specification:
     - Normal release 2.6.4 -> (2, 6, 4, 1, ())
-    - Pre-release 2.6.4-rc.1 -> (2, 6, 4, 0, ('rc', 1))
+    - Pre-release 2.6.4-rc.2 -> (2, 6, 4, 0, ('rc', 2))
     A pre-release version has lower precedence than a normal version with the same major.minor.patch.
     """
     cleaned = version_str.strip().lstrip("v")
@@ -409,7 +409,7 @@ def get_local_version(project_dir: str | None = None) -> str:
                 return match.group(1)
         except Exception:
             pass
-    return "v2.6.4-rc.1"
+    return "v2.6.4-rc.2"
 
 
 def check_github_release(
