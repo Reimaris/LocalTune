@@ -5,6 +5,8 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
+import urllib.request
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -110,22 +112,60 @@ def get_installed_ytdlp_version() -> str:
 
 
 def run_ytdlp_upgrade() -> tuple[bool, str]:
-    """Upgrade yt-dlp in-place using pip without cache."""
+    """Upgrade yt-dlp in-place using pip without cache.
+
+    If pip is missing in standalone environments (e.g. embedded Python runtime),
+    automatically bootstraps pip on-demand via get-pip.py and retries.
+    """
+    pip_cmd = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--upgrade",
+        "--no-cache-dir",
+        "yt-dlp",
+    ]
+
     try:
         proc = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "pip",
-                "install",
-                "--upgrade",
-                "--no-cache-dir",
-                "yt-dlp",
-            ],
+            pip_cmd,
             capture_output=True,
             text=True,
             timeout=120,
         )
+        err_output = proc.stderr.strip() or proc.stdout.strip()
+
+        # Check if pip is missing from Python environment
+        if proc.returncode != 0 and "No module named pip" in err_output:
+            logger.warning("pip is missing from current runtime. Bootstrapping via get-pip.py...")
+            with tempfile.TemporaryDirectory() as temp_dir:
+                get_pip_path = os.path.join(temp_dir, "get-pip.py")
+                get_pip_url = "https://bootstrap.pypa.io/get-pip.py"
+                req = urllib.request.Request(get_pip_url, headers={"User-Agent": "LocalTune-Upgrader"})
+                with urllib.request.urlopen(req, timeout=30) as resp, open(get_pip_path, "wb") as out_f:
+                    out_f.write(resp.read())
+
+                bootstrap_proc = subprocess.run(
+                    [sys.executable, get_pip_path, "--no-warn-script-location"],
+                    capture_output=True,
+                    text=True,
+                    timeout=180,
+                )
+                if bootstrap_proc.returncode != 0:
+                    b_err = bootstrap_proc.stderr.strip() or bootstrap_proc.stdout.strip()
+                    logger.error(f"Failed to bootstrap pip: {b_err}")
+                    return False, f"Failed to bootstrap pip: {b_err}"
+
+            # Retry pip install after bootstrap
+            logger.info("pip successfully bootstrapped. Retrying yt-dlp upgrade...")
+            proc = subprocess.run(
+                pip_cmd,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+
         if proc.returncode == 0:
             new_ver = get_installed_ytdlp_version()
             return True, f"Successfully updated yt-dlp to {new_ver}!"
