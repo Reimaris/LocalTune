@@ -9,7 +9,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v2.6.3-pink" alt="Version" />
+  <img src="https://img.shields.io/github/v/release/Reimaris/LocalTune?color=pink&label=latest" alt="Latest Version" />
+  <img src="https://img.shields.io/github/v/release/Reimaris/LocalTune?include_prereleases&color=orange&label=pre-release" alt="Recent Version (incl. Pre-releases)" />
   <img src="https://img.shields.io/badge/windows-standalone_ready-purple" alt="Windows Standalone" />
   <img src="https://img.shields.io/badge/docker-ready-blue" alt="Docker Ready" />
   <img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" />
