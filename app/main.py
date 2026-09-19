@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import urllib.request
 import uuid
 from contextlib import asynccontextmanager
@@ -31,16 +32,22 @@ from app.core.downloader import (
     DOWNLOAD_DIR,
     fetch_playlist_title,
     get_canonical_source_url,
+    inspect_url_tracks,
     write_m3u8,
     yt_dlp_sanitize,
 )
 from app.core.library_metrics import get_library_metrics
 from app.core.logging_config import log_generator, setup_logging
-from app.core.process_registry import download_manager
+from app.core.process_registry import cleanup_all_partial_files, download_manager
 from app.core.scheduler import periodic_sync_loop
 from app.db import models
-from app.db.database import engine, get_db
-from app.worker import process_download, process_playlist_sync
+from app.db.database import SessionLocal, engine, get_db
+from app.worker import (
+    process_download,
+    process_playlist_sync,
+    retry_job_batch,
+    retry_single_track,
+)
 
 # Initialize logging before doing anything else
 logger = setup_logging()
@@ -184,17 +191,119 @@ def run_ytdlp_upgrade() -> tuple[bool, str]:
         return False, f"Error upgrading yt-dlp: {e!s}"
 
 
+def get_db_session() -> Session:
+    """Get a database session, respecting app.dependency_overrides if present."""
+    if get_db in app.dependency_overrides:
+        override = app.dependency_overrides[get_db]
+        res = override()
+        if hasattr(res, "__next__"):
+            return next(res)
+        return res
+    return SessionLocal()
+
+
+def pause_active_downloads(db: Session | None = None) -> int:
+    """Transition all in-flight 'Downloading', 'Queued', and 'Fetching Metadata' downloads to 'Paused'
+    and clean up partial files on disk.
+    """
+    owns_session = False
+    if db is None:
+        db = get_db_session()
+        owns_session = True
+    try:
+        active_tracks = (
+            db.query(models.Download)
+            .filter(models.Download.status.in_(["Downloading", "Queued", "Fetching Metadata"]))
+            .all()
+        )
+        count = len(active_tracks)
+        if count > 0:
+            for t in active_tracks:
+                t.status = "Paused"
+            db.commit()
+            logger.info(f"Transitioned {count} active downloads to 'Paused' state on shutdown.")
+        cleanup_all_partial_files()
+        return count
+    finally:
+        if owns_session:
+            db.close()
+
+
+def resume_paused_downloads(db: Session | None = None) -> int:
+    """Automatically resume downloads that were transitioned to 'Paused' upon previous shutdown."""
+    owns_session = False
+    if db is None:
+        db = get_db_session()
+        owns_session = True
+    try:
+        paused_tracks = (
+            db.query(models.Download)
+            .filter(models.Download.status == "Paused")
+            .order_by(models.Download.id.asc())
+            .all()
+        )
+        count = len(paused_tracks)
+        if count == 0:
+            return 0
+
+        for t in paused_tracks:
+            t.status = "Queued"
+            t.file_path = None
+        db.commit()
+        logger.info(f"Re-enqueued {count} paused tracks to 'Queued' status for execution.")
+
+        dispatched_jobs: set[str] = set()
+        dispatched_single_tracks: list[int] = []
+
+        for t in paused_tracks:
+            jid = t.job_id
+            if jid:
+                if jid not in dispatched_jobs:
+                    dispatched_jobs.add(jid)
+            else:
+                if t.id is not None:
+                    dispatched_single_tracks.append(int(t.id))
+
+        threads: list[threading.Thread] = []
+        for jid in dispatched_jobs:
+            thread = threading.Thread(target=retry_job_batch, args=(jid,), daemon=True)
+            thread.start()
+            threads.append(thread)
+
+        for track_id in dispatched_single_tracks:
+            thread = threading.Thread(target=retry_single_track, args=(track_id,), daemon=True)
+            thread.start()
+            threads.append(thread)
+
+        for th in threads:
+            th.join(timeout=0.05)
+
+        return count
+    finally:
+        if owns_session:
+            db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Modern FastAPI lifespan manager.
 
-    Starts the 6-hour periodic playlist sync background task on startup and
-    cancels it cleanly on shutdown, suppressing the expected CancelledError.
-    This replaces the legacy startup/shutdown hooks and eliminates the Uvicorn
-    LifespanOn queue deadlock on Python 3.12 Windows Proactor event loops.
+    Resumes paused downloads from previous sessions and starts the 6-hour periodic playlist sync
+    background task on startup. On shutdown, transitions in-flight downloads to 'Paused', cleans up
+    partial files, and cleanly cancels the sync task.
     """
+    try:
+        resume_paused_downloads()
+    except Exception as e:
+        logger.error(f"Error resuming paused downloads on startup: {e}", exc_info=True)
+
     sync_task = asyncio.create_task(periodic_sync_loop())
     yield
+    try:
+        pause_active_downloads()
+    except Exception as e:
+        logger.error(f"Error pausing active downloads on shutdown: {e}", exc_info=True)
+
     sync_task.cancel()
     try:
         await sync_task
@@ -297,6 +406,15 @@ async def download_url(
         </div>
         """
 
+    new_count, dupes = inspect_url_tracks(url, db, media_type=media_type)
+    if dupes > 0 and new_count == 0:
+        return """
+        <div class="bg-amber-900 border border-amber-700 text-white px-4 py-3 rounded relative mb-4" role="alert">
+          <strong class="font-bold">Info:</strong>
+          <span class="block sm:inline">All tracks already downloaded and verified on disk — skipped redundant download.</span>
+        </div>
+        """
+
     job_id = uuid.uuid4().hex
     background_tasks.add_task(
         process_download,
@@ -323,10 +441,15 @@ async def download_url(
         logger.error(f"Failed to insert placeholder download: {e}")
         db.rollback()
 
+    if dupes > 0 and new_count > 0:
+        msg = f"{new_count} new tracks queued ({dupes} already downloaded & skipped)."
+    else:
+        msg = f"Job queued for {url} (ID: {job_id})"
+
     return f"""
     <div class="bg-emerald-900 border border-emerald-700 text-white px-4 py-3 rounded relative mb-4" role="alert">
       <strong class="font-bold">Success!</strong>
-      <span class="block sm:inline">Job queued for {url} (ID: {job_id})</span>
+      <span class="block sm:inline">{msg}</span>
     </div>
     """
 
@@ -659,6 +782,8 @@ async def api_tracks(
                     or "Fetching Metadata" in statuses
                 ):
                     job_status = "Downloading"
+                elif "Paused" in statuses:
+                    job_status = "Paused"
                 elif all(s == "Deleted" for s in statuses):
                     job_status = "Deleted"
                 elif all(s == "Aborted" for s in statuses):

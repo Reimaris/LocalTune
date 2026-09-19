@@ -225,6 +225,15 @@
                         Downloading
                     </button>
                     <button type="button"
+                        onclick="document.getElementById('filter-status').value='paused'; document.getElementById('filter-page').value='1';"
+                        hx-get="/api/tracks"
+                        hx-target="#tracks-table-container"
+                        hx-include="#history-filter-form"
+                        hx-vals='{"status": "paused", "page": "1"}'
+                        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#1e1e24] text-[#a1a1aa] hover:text-white hover:bg-[#3f3f46] border border-[#3f3f46] transition-colors">
+                        Paused
+                    </button>
+                    <button type="button"
                         onclick="document.getElementById('filter-status').value='completed'; document.getElementById('filter-page').value='1';"
                         hx-get="/api/tracks"
                         hx-target="#tracks-table-container"

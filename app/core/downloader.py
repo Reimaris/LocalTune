@@ -102,6 +102,147 @@ def check_exists(db: Session, track_id: str) -> bool:
     return False
 
 
+def inspect_url_tracks(
+    url: str,
+    db: Session,
+    media_type: str = "audio",
+    timeout: float = 4.0,
+) -> tuple[int, int]:
+    """Inspects a target download URL and determines (new_count, duplicate_count) against the database and disk.
+
+    Uses fast regex matching for standard YouTube and Spotify singles to avoid subprocess overhead.
+    Falls back to fast flat-playlist inspection for playlists and generic extractors.
+    """
+    url_stripped = url.strip()
+
+    # Fast-path 1: Single YouTube Video
+    yt_match = re.search(r"(?:v=|youtu\.be/)([a-zA-Z0-9_-]{11})", url_stripped)
+    if yt_match and not re.search(r"[?&]list=", url_stripped):
+        raw_id = yt_match.group(1)
+        track_id = f"youtube_{raw_id}"
+        if check_exists(db, track_id):
+            return (0, 1)
+        return (1, 0)
+
+    # Fast-path 2: Single Spotify Track
+    sp_match = re.search(r"spotify\.com/track/([a-zA-Z0-9]+)", url_stripped)
+    if sp_match:
+        raw_id = sp_match.group(1)
+        track_id = f"spotify_{raw_id}"
+        if check_exists(db, track_id):
+            return (0, 1)
+        return (1, 0)
+
+    # Probe-path: Spotify playlist or album
+    if re.search(r"spotify\.com", url_stripped):
+        temp_file = f"temp_probe_{uuid.uuid4().hex}.spotdl"
+        try:
+            settings = db.query(models.Settings).first()
+            auth_args: list[str] = []
+            if settings and settings.spotify_client_id and settings.spotify_client_secret:
+                auth_args = [
+                    "--client-id",
+                    str(settings.spotify_client_id).strip(),
+                    "--client-secret",
+                    str(settings.spotify_client_secret).strip(),
+                ]
+            cmd = (
+                get_spotdl_cmd()
+                + auth_args
+                + [
+                    "--yt-dlp-args",
+                    "extractor-args=youtube:player_client=android,web,ios",
+                    "save",
+                    url_stripped,
+                    "--save-file",
+                    temp_file,
+                ]
+            )
+            subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                creationflags=SUBPROCESS_CREATIONFLAGS,
+            )
+            if os.path.exists(temp_file):
+                with open(temp_file, "r") as f:
+                    metadata = json.load(f)
+                dupes = 0
+                new = 0
+                for item in metadata:
+                    raw_id = item.get("song_id")
+                    if raw_id:
+                        tid = f"spotify_{raw_id}"
+                        if check_exists(db, tid):
+                            dupes += 1
+                        else:
+                            new += 1
+                    else:
+                        new += 1
+                return (new, dupes)
+        except Exception as e:
+            logger.debug(f"Spotify duplicate probe failed or timed out: {e}")
+        finally:
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except OSError:
+                    pass
+        return (1, 0)
+
+    # Probe-path: Generic yt-dlp / YouTube playlist
+    try:
+        cmd_meta = get_ytdlp_cmd() + [
+            "--yes-playlist",
+            "--ignore-errors",
+            "-J",
+            "--flat-playlist",
+            url_stripped,
+        ]
+        res = subprocess.run(
+            cmd_meta,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            creationflags=SUBPROCESS_CREATIONFLAGS,
+        )
+        data = json.loads(res.stdout)
+        extractor = (
+            data.get("extractor_key") or data.get("extractor") or "ytdlp"
+        )
+        entries = data.get("entries")
+        dupes = 0
+        new = 0
+        if entries:
+            for entry in entries:
+                raw_id = entry.get("id")
+                if raw_id:
+                    tid = f"{extractor.lower()}_{raw_id}"
+                    if check_exists(db, tid):
+                        dupes += 1
+                    else:
+                        new += 1
+                else:
+                    new += 1
+        else:
+            raw_id = data.get("id")
+            if raw_id:
+                tid = f"{extractor.lower()}_{raw_id}"
+                if check_exists(db, tid):
+                    dupes += 1
+                else:
+                    new += 1
+            else:
+                new += 1
+        return (new, dupes)
+    except Exception as e:
+        logger.debug(f"yt-dlp duplicate probe failed or timed out: {e}")
+        return (1, 0)
+
+
 def get_canonical_source_url(download: models.Download) -> str:
     """Returns the canonical source webpage URL for a download record.
 

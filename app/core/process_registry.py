@@ -10,6 +10,7 @@ import logging
 import os
 import subprocess
 import threading
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -169,3 +170,34 @@ def _safe_remove(path: str) -> None:
 
 # Module-level singleton — imported by downloader.py and main.py
 download_manager = DownloadManager()
+
+
+def cleanup_all_partial_files(download_dir: str | Path | None = None) -> int:
+    """Recursively remove all in-flight .part and .ytdl files and root temp_*.spotdl files.
+
+    Returns the count of removed partial files.
+    """
+    from app.core.downloader import DOWNLOAD_DIR
+
+    target_dir = str(download_dir or DOWNLOAD_DIR)
+    removed_count = 0
+    if os.path.isdir(target_dir):
+        for root, _, files in os.walk(target_dir):
+            for f in files:
+                if f.endswith((".part", ".ytdl")):
+                    full_path = os.path.join(root, f)
+                    try:
+                        os.remove(full_path)
+                        removed_count += 1
+                        logger.debug(f"Removed partial file: {full_path}")
+                    except OSError as e:
+                        logger.warning(f"Failed to remove {full_path}: {e}")
+
+    for temp_spotdl in glob.glob("temp_*.spotdl"):
+        try:
+            os.remove(temp_spotdl)
+            removed_count += 1
+        except OSError:
+            pass
+
+    return removed_count
