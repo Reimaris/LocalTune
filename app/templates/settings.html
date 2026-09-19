@@ -194,5 +194,28 @@
             </div>
         </div>
     </div>
+
+    <!-- Application Updates & Release Channel -->
+    <div class="mt-8 pt-6 border-t border-[#3f3f46]">
+        <h3 class="text-lg font-medium text-white mb-4">Application Updates & Release Channel</h3>
+        <div id="launcher-config-alert"></div>
+        <form hx-post="/api/settings/launcher-config" hx-target="#launcher-config-alert" class="bg-[#18181b] border border-[#27272a] rounded-xl p-4 space-y-4">
+            <div class="flex items-start justify-between gap-4">
+                <div class="space-y-1">
+                    <label class="block text-sm font-medium text-white">Enable Pre-Release / Beta Updates</label>
+                    <p class="text-xs text-[#a1a1aa] max-w-lg">
+                        Allows the auto-updater and system tray update check to discover and notify you about experimental pre-releases and release candidates (e.g. <span class="font-mono text-emerald-400">v2.6.4-rc.1</span>) before they are generally released.
+                    </p>
+                </div>
+                <div class="pt-1">
+                    <input type="checkbox" name="include_prereleases" value="true" 
+                        {% if launcher_config and launcher_config.include_prereleases %}checked{% endif %}
+                        hx-post="/api/settings/launcher-config"
+                        hx-target="#launcher-config-alert"
+                        class="w-5 h-5 accent-[#d40060] rounded cursor-pointer bg-[#111115] border border-[#3f3f46]">
+                </div>
+            </div>
+        </form>
+    </div>
 </div>
 {% endblock %}

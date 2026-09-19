@@ -18,7 +18,7 @@ from fastapi import (
     HTTPException,
     Request,
 )
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import or_, text
@@ -290,15 +290,51 @@ async def settings_page(request: Request, db: Session = Depends(get_db)):
 
     ytdlp_version = get_installed_ytdlp_version()
 
+    from windows_launcher.localtune import load_launcher_config
+
+    launcher_cfg = load_launcher_config()
+
     return templates.TemplateResponse(
         "settings.html",
         {
             "request": request,
             "title": "Settings",
             "settings": db_settings,
+            "launcher_config": launcher_cfg,
             "ytdlp_version": ytdlp_version,
         },
     )
+
+
+@app.get("/api/settings/launcher-config")
+async def get_launcher_config_endpoint():
+    from windows_launcher.localtune import load_launcher_config
+
+    cfg = load_launcher_config()
+    return JSONResponse(
+        {
+            "include_prereleases": bool(cfg.get("include_prereleases", False)),
+            "download_dir": cfg.get("download_dir"),
+        }
+    )
+
+
+@app.post("/api/settings/launcher-config", response_class=HTMLResponse)
+async def update_launcher_config_endpoint(
+    include_prereleases: str | None = Form(None),
+):
+    from windows_launcher.localtune import load_launcher_config, save_launcher_config
+
+    cfg = load_launcher_config()
+    cfg["include_prereleases"] = bool(include_prereleases)
+    save_launcher_config(cfg)
+
+    return """
+    <div class="bg-emerald-900 border border-emerald-700 text-white px-4 py-3 rounded relative mb-4" role="alert">
+      <strong class="font-bold">Success!</strong>
+      <span class="block sm:inline">Launcher settings updated successfully.</span>
+    </div>
+    """
 
 
 @app.post("/settings", response_class=HTMLResponse)

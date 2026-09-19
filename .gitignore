@@ -13,7 +13,7 @@ ENV/
 # Local databases and dynamic state
 *.db
 *.sqlite
-config/logs/
+config/
 test_config/logs/
 
 # Environment and Docker overrides

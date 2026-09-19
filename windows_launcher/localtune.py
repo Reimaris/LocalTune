@@ -355,15 +355,39 @@ def build_backend_env(project_dir: str | None = None) -> dict[str, str]:
 
 
 
-def parse_version_tuple(version_str: str) -> tuple[int, ...]:
-    """Parses a version string like 'v2.5.0' or 'v2.6.3-rc.1' into an integer tuple (2, 5, 0)."""
+def parse_version_tuple(version_str: str) -> tuple[Any, ...]:
+    """Parses a version string like 'v2.5.0' or 'v2.6.4-rc.1' into a comparable tuple.
+
+    Per SemVer specification:
+    - Normal release 2.6.4 -> (2, 6, 4, 1, ())
+    - Pre-release 2.6.4-rc.1 -> (2, 6, 4, 0, ('rc', 1))
+    A pre-release version has lower precedence than a normal version with the same major.minor.patch.
+    """
     cleaned = version_str.strip().lstrip("v")
+    prerelease_parts: list[Any] = []
+    is_release = 1
+
     if "-" in cleaned:
-        cleaned = cleaned.split("-")[0]
+        main_part, pre_part = cleaned.split("-", 1)
+        is_release = 0
+        for token in pre_part.split("."):
+            if token.isdigit():
+                prerelease_parts.append(int(token))
+            else:
+                prerelease_parts.append(token)
+    else:
+        main_part = cleaned
+
     try:
-        return tuple(int(p) for p in cleaned.split("."))
+        core_nums = tuple(int(p) for p in main_part.split("."))
     except ValueError:
-        return (0, 0, 0)
+        core_nums = (0, 0, 0)
+
+    # Pad core numbers to 3 elements if needed (e.g. 2.5 -> 2.5.0)
+    while len(core_nums) < 3:
+        core_nums = core_nums + (0,)
+
+    return core_nums + (is_release, tuple(prerelease_parts))
 
 
 def is_newer_version(remote_tag: str, local_tag: str) -> bool:
@@ -388,16 +412,31 @@ def get_local_version(project_dir: str | None = None) -> str:
     return "v2.6.3"
 
 
-def check_github_release(repo: str = "Reimaris/LocalTune", timeout: float = 3.0) -> dict[str, Any] | None:
-    """Queries GitHub API for the latest release metadata with timeout."""
-    url = f"https://api.github.com/repos/{repo}/releases/latest"
+def check_github_release(
+    repo: str = "Reimaris/LocalTune",
+    timeout: float = 3.0,
+    include_prereleases: bool = False,
+) -> dict[str, Any] | None:
+    """Queries GitHub API for the latest release metadata with timeout.
+
+    When include_prereleases is True, queries the /releases list endpoint to allow
+    discovering pre-releases / release candidates. Otherwise queries /releases/latest.
+    """
+    if include_prereleases:
+        url = f"https://api.github.com/repos/{repo}/releases"
+    else:
+        url = f"https://api.github.com/repos/{repo}/releases/latest"
+
     req = urllib.request.Request(url, headers={"User-Agent": "LocalTune-Launcher"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             status = getattr(resp, "status", getattr(resp, "code", None))
             if status == 200:
-                data: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
-                return data
+                data: Any = json.loads(resp.read().decode("utf-8"))
+                if include_prereleases and isinstance(data, list):
+                    return data[0] if data else None
+                elif isinstance(data, dict):
+                    return data
     except Exception:
         pass
     return None
@@ -1060,13 +1099,16 @@ class LocalTuneSupervisor:
         """Checks GitHub for newer version, prompts user if found, and handles selection."""
         cleanup_old_executables(self.project_dir)
 
+        cfg = load_launcher_config(self.project_dir)
+        include_prereleases = bool(cfg.get("include_prereleases", False))
+
         info: dict[str, Any] | None = None
         done = threading.Event()
 
         def fetch() -> None:
             nonlocal info
             try:
-                info = check_github_release(timeout=3.0)
+                info = check_github_release(timeout=3.0, include_prereleases=include_prereleases)
             except Exception:
                 info = None
             finally:
@@ -1129,6 +1171,56 @@ class LocalTuneSupervisor:
         )
 
         return user_choice["action"] == "continue"
+
+    def check_updates_manual(self) -> None:
+        """On-demand manual update check triggered from system tray context menu."""
+        def worker() -> None:
+            cfg = load_launcher_config(self.project_dir)
+            include_prereleases = bool(cfg.get("include_prereleases", False))
+            info = check_github_release(timeout=5.0, include_prereleases=include_prereleases)
+            local_tag = get_local_version(self.project_dir)
+
+            if not info or not is_newer_version(str(info.get("tag_name", "")), local_tag):
+                if tk is not None and messagebox is not None:
+                    info_root = tk.Tk()
+                    info_root.withdraw()
+                    info_root.attributes("-topmost", True)
+                    messagebox.showinfo(
+                        "LocalTune Update Check",
+                        f"You are already running the latest version ({local_tag}).",
+                        parent=info_root,
+                    )
+                    info_root.destroy()
+                return
+
+            remote_tag = str(info.get("tag_name", ""))
+            release_url = str(info.get("html_url", "https://github.com/Reimaris/LocalTune/releases"))
+            download_url = get_release_zip_url(info)
+
+            def on_update() -> None:
+                if download_url:
+                    success = download_and_apply_update(download_url, self.project_dir)
+                    if success:
+                        python_exe = get_python_executable(self.project_dir) or sys.executable
+                        launcher_target = sys.executable if getattr(sys, "frozen", False) else python_exe
+                        args = [launcher_target] if getattr(sys, "frozen", False) else [launcher_target, os.path.abspath(__file__)]
+                        try:
+                            subprocess.Popen(args, cwd=self.project_dir, creationflags=SUBPROCESS_CREATIONFLAGS)
+                        except Exception:
+                            pass
+                        sys.exit(0)
+                else:
+                    webbrowser.open(release_url)
+
+            show_update_dialog(
+                remote_tag=remote_tag,
+                local_tag=local_tag,
+                release_url=release_url,
+                download_url=download_url,
+                on_update=on_update,
+            )
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def start(self, open_browser: bool = True, check_updates: bool = True) -> bool:
         """Starts the backend, performs health check, and opens browser.
@@ -1359,6 +1451,9 @@ def build_tray_menu(supervisor: LocalTuneSupervisor) -> Any:
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def on_check_updates(icon: Any = None, item: Any = None) -> None:
+        supervisor.check_updates_manual()
+
     def on_open_logs(icon: Any = None, item: Any = None) -> None:
         supervisor.open_logs()
 
@@ -1372,6 +1467,7 @@ def build_tray_menu(supervisor: LocalTuneSupervisor) -> Any:
         pystray.MenuItem("📁 Open Downloads Folder", on_open_downloads),
         pystray.MenuItem("⚙ Change Downloads Folder...", on_change_downloads),
         pystray.MenuItem("↺ Reset Downloads Folder to Default", on_reset_downloads),
+        pystray.MenuItem("🔄 Check for Updates", on_check_updates),
         pystray.MenuItem("📄 View Logs", on_open_logs),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("✕ Quit", on_quit),
