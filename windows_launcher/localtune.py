@@ -346,6 +346,8 @@ def build_backend_env(project_dir: str | None = None) -> dict[str, str]:
     env["PATH"] = f"{bin_dir}{path_sep}{runtime_dir}{path_sep}{existing_path}"
     env["PYTHONPATH"] = project_dir
     env["PYTHONUNBUFFERED"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
 
     env["DOWNLOAD_DIR"] = get_effective_download_dir(project_dir)
 

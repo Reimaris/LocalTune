@@ -22,6 +22,31 @@ class SafeTimedRotatingFileHandler(TimedRotatingFileHandler):
             pass
 
 
+class SafeStreamHandler(logging.StreamHandler):  # type: ignore[type-arg]
+    """
+    StreamHandler that prevents crashes from UnicodeEncodeError on restricted
+    consoles (such as Windows cp1252 ANSI codepage). If writing fails with
+    UnicodeEncodeError, it falls back to encoding with errors="replace".
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+            stream = self.stream
+            try:
+                stream.write(msg + self.terminator)
+                self.flush()
+            except UnicodeEncodeError:
+                encoding = getattr(stream, "encoding", None) or "utf-8"
+                safe_msg = msg.encode(encoding, errors="replace").decode(
+                    encoding, errors="replace"
+                )
+                stream.write(safe_msg + self.terminator)
+                self.flush()
+        except Exception:
+            self.handleError(record)
+
+
 class AsyncQueueHandler(logging.Handler):
     """
     A custom logging handler that puts log messages into an asyncio queue.
@@ -78,8 +103,16 @@ def setup_logging(log_level: str = "INFO"):
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
+    # Ensure sys.stdout and sys.stderr handle UTF-8 if reconfigurable
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
     # Console Handler for real-time stdout tracking
-    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler = SafeStreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
 
     # File Handler for daily rotation (midnight) keeping 5 backups

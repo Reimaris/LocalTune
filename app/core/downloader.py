@@ -514,6 +514,8 @@ def handle_spotify(
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     creationflags=SUBPROCESS_CREATIONFLAGS,
                 )
                 if is_on_demand:
@@ -527,6 +529,18 @@ def handle_spotify(
                 # Re-check abort in case signal arrived during download
                 if is_on_demand and download_manager.is_track_aborted(job_id, track_id):
                     aborted = True
+
+                if proc.returncode != 0 and not aborted:
+                    err_output = (
+                        _stderr.strip()
+                        if _stderr
+                        else (_stdout.strip() if _stdout else "Unknown error")
+                    )
+                    if len(err_output) > 2000:
+                        err_output = err_output[-2000:]
+                    logger.error(
+                        f"spotdl failed for track {track_id} (exit code {proc.returncode}): {err_output}"
+                    )
             except Exception as e:
                 if is_on_demand:
                     download_manager.unregister_process(job_id, track_id)
@@ -617,6 +631,8 @@ def handle_ytdlp(
             check=True,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             creationflags=SUBPROCESS_CREATIONFLAGS,
         )
 
@@ -763,6 +779,8 @@ def handle_ytdlp(
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     creationflags=SUBPROCESS_CREATIONFLAGS,
                 )
                 if is_on_demand:
@@ -776,6 +794,18 @@ def handle_ytdlp(
                 # Re-check abort in case signal arrived during download
                 if is_on_demand and download_manager.is_track_aborted(job_id, track_id):
                     aborted = True
+
+                if proc.returncode != 0 and not aborted:
+                    err_output = (
+                        _stderr.strip()
+                        if _stderr
+                        else (_stdout.strip() if _stdout else "Unknown error")
+                    )
+                    if len(err_output) > 2000:
+                        err_output = err_output[-2000:]
+                    logger.error(
+                        f"yt-dlp failed for track {track_id} (exit code {proc.returncode}): {err_output}"
+                    )
             except Exception as e:
                 if is_on_demand:
                     download_manager.unregister_process(job_id, track_id)
@@ -918,6 +948,8 @@ def fetch_playlist_title(url: str, db: Session | None = None) -> tuple[str, bool
                 check=True,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=120,
                 creationflags=SUBPROCESS_CREATIONFLAGS,
             )
@@ -1015,6 +1047,8 @@ def sync_playlist_job(synced_playlist_id: int, db: Session) -> dict:
                 check=True,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=1200,
                 creationflags=SUBPROCESS_CREATIONFLAGS,
             )
