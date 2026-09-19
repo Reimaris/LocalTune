@@ -315,6 +315,7 @@ async def download_url(
             artist="Pending Metadata...",
             status="Queued",
             job_id=job_id,
+            source_url=url,
         )
         db.add(new_download)
         db.commit()
@@ -651,6 +652,7 @@ async def api_tracks(
                 job_tracks = grouped_jobs[t.job_id]
 
                 statuses = [child.status for child in job_tracks]
+                has_retryable = any(s in ("Failed", "Aborted", "Deleted") for s in statuses)
                 if (
                     "Downloading" in statuses
                     or "Queued" in statuses
@@ -675,6 +677,7 @@ async def api_tracks(
                         "job_id": t.job_id,
                         "status": job_status,
                         "tracks": job_tracks,
+                        "has_retryable": has_retryable,
                     }
                 )
 
@@ -950,6 +953,71 @@ async def delete_job(request: Request, job_id: str, db: Session = Depends(get_db
 async def _render_tracks(request: Request, db: Session) -> HTMLResponse:
     """Re-renders the full track list partial (shared by abort & other endpoints)."""
     return await api_tracks(request, db=db)
+
+
+@app.post("/api/tracks/{track_id}/retry", response_class=HTMLResponse)
+async def retry_track(
+    request: Request,
+    track_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Retries downloading an individual on-demand track in Failed, Aborted, or Deleted state."""
+    track = db.query(models.Download).filter(models.Download.id == track_id).first()
+    if not track:
+        raise HTTPException(status_code=404, detail="Track not found")
+
+    if track.synced_playlist_id is not None:
+        raise HTTPException(
+            status_code=400, detail="Synced playlist tracks cannot be retried here"
+        )
+
+    if track.status not in ("Failed", "Aborted", "Deleted"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only Failed, Aborted, or Deleted tracks can be retried",
+        )
+
+    track.status = "Queued"
+    track.file_path = None
+    db.commit()
+
+    from app.worker import retry_single_track
+
+    background_tasks.add_task(retry_single_track, track_id)
+    return await _render_tracks(request, db)
+
+
+@app.post("/api/jobs/{job_id}/retry", response_class=HTMLResponse)
+async def retry_job(
+    request: Request,
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Retries all child tracks of an on-demand playlist job that are in Failed, Aborted, or Deleted state."""
+    retryable_tracks = (
+        db.query(models.Download)
+        .filter(
+            models.Download.job_id == job_id,
+            models.Download.synced_playlist_id.is_(None),
+            models.Download.status.in_(["Failed", "Aborted", "Deleted"]),
+        )
+        .all()
+    )
+
+    if not retryable_tracks:
+        return await _render_tracks(request, db)
+
+    for track in retryable_tracks:
+        track.status = "Queued"
+        track.file_path = None
+    db.commit()
+
+    from app.worker import retry_job_batch
+
+    background_tasks.add_task(retry_job_batch, job_id)
+    return await _render_tracks(request, db)
 
 
 # SYNCED PLAYLISTS API ENDPOINTS

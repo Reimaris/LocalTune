@@ -131,6 +131,9 @@ def get_canonical_source_url(download: models.Download) -> str:
     elif track_id.startswith(("http://", "https://")):
         return track_id
 
+    if download.title and download.title.strip().startswith(("http://", "https://")):
+        return download.title.strip()
+
     return ""
 
 
@@ -154,8 +157,10 @@ def insert_download(
         if file_path:
             dl.file_path = file_path
         dl.status = status
-        dl.job_id = job_id
-        dl.job_title = job_title
+        if job_id:
+            dl.job_id = job_id
+        if job_title is not None:
+            dl.job_title = job_title
         if synced_playlist_id:
             dl.synced_playlist_id = synced_playlist_id
         if source_url:
@@ -395,6 +400,7 @@ def handle_spotify(
     file_format: str = "opus",
     synced_playlist_id: int | None = None,
     audio_bitrate: str = "best",
+    target_playlist_title: str | None = None,
 ) -> str:
     """Handles Spotify downloads with spotdl, applying delta-sync.
 
@@ -460,14 +466,14 @@ def handle_spotify(
         if not metadata:
             return "Empty URL"
 
-        is_playlist = len(metadata) > 1
+        is_playlist = len(metadata) > 1 or bool(target_playlist_title)
         main_title = (
-            metadata[0].get("list_name", "Spotify Playlist")
-            if is_playlist and metadata[0].get("list_name")
-            else metadata[0].get("name", "Spotify Track")
+            target_playlist_title
+            or (metadata[0].get("list_name") if metadata and metadata[0].get("list_name") else None)
+            or (metadata[0].get("name", "Spotify Track") if metadata else "Spotify Track")
         )
-        job_title_to_save = main_title if is_playlist else None
-        list_name = metadata[0].get("list_name", "") if is_playlist else ""
+        job_title_to_save = target_playlist_title or (main_title if is_playlist else None)
+        list_name = target_playlist_title or (metadata[0].get("list_name", "") if (metadata and is_playlist) else "")
         sanitized_list_name = spotdl_sanitize(list_name) if list_name else ""
 
         to_download = []
@@ -645,6 +651,7 @@ def handle_ytdlp(
     synced_playlist_id: int | None = None,
     resolution_cap: str = "best",
     audio_bitrate: str = "best",
+    target_playlist_title: str | None = None,
 ) -> str:
     """Handles generic yt-dlp downloads for non-Spotify URLs (YouTube, SoundCloud, Bandcamp, etc.).
 
@@ -699,11 +706,12 @@ def handle_ytdlp(
             job_title_to_save = main_title
             tracks_data = entries
         else:
-            is_playlist = False
-            job_title_to_save = None
+            is_playlist = bool(target_playlist_title)
+            job_title_to_save = target_playlist_title
             tracks_data = [metadata]
 
-        sanitized_playlist_title = yt_dlp_sanitize(main_title) if is_playlist else ""
+        playlist_folder_name = job_title_to_save if job_title_to_save else main_title
+        sanitized_playlist_title = yt_dlp_sanitize(playlist_folder_name) if is_playlist else ""
 
         for track in tracks_data:
             raw_id = track.get("id")

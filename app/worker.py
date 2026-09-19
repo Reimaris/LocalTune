@@ -1,8 +1,16 @@
 import logging
 import re
 
-from app.core.downloader import handle_spotify, handle_ytdlp, sync_playlist_job
+from sqlalchemy.orm import Session
+
+from app.core.downloader import (
+    get_canonical_source_url,
+    handle_spotify,
+    handle_ytdlp,
+    sync_playlist_job,
+)
 from app.core.notifications import send_telegram_notification
+from app.core.process_registry import download_manager
 from app.db import models
 from app.db.database import SessionLocal
 
@@ -80,3 +88,96 @@ def process_playlist_sync(synced_playlist_id: int):
         logger.error(f"Error executing playlist sync for {synced_playlist_id}: {e}")
     finally:
         db.close()
+
+
+def retry_single_track(track_db_id: int, db: Session | None = None):
+    """Background worker task to retry downloading a single track in Failed/Aborted/Deleted state."""
+    close_db = False
+    if db is None:
+        db = SessionLocal()
+        close_db = True
+    try:
+        track = db.query(models.Download).filter(models.Download.id == track_db_id).first()
+        if not track:
+            logger.error(f"Cannot retry track {track_db_id}: not found in DB")
+            return
+
+        canonical_url = get_canonical_source_url(track)
+        if not canonical_url:
+            logger.error(f"Cannot retry track {track_db_id}: could not determine canonical source URL")
+            track.status = "Failed"
+            db.commit()
+            return
+
+        settings = db.query(models.Settings).first()
+        file_format = settings.default_audio_format if settings and settings.default_audio_format else "opus"
+        audio_bitrate = settings.default_audio_bitrate if settings and settings.default_audio_bitrate else "best"
+
+        job_id = track.job_id or track.track_id or "retry_job"
+        logger.info(f"Retrying download for track {track.id} ({track.title}) via {canonical_url} (job_id: {job_id})")
+
+        if re.search(r"(spotify\.com)", canonical_url):
+            handle_spotify(
+                canonical_url,
+                db,
+                job_id,
+                file_format=file_format,
+                audio_bitrate=audio_bitrate,
+                target_playlist_title=track.job_title,
+            )
+        else:
+            handle_ytdlp(
+                canonical_url,
+                db,
+                job_id,
+                media_type="audio",
+                file_format=file_format,
+                resolution_cap="best",
+                audio_bitrate=audio_bitrate,
+                target_playlist_title=track.job_title,
+            )
+    except Exception as e:
+        logger.error(f"Failed retrying track {track_db_id}: {e}", exc_info=True)
+        track = db.query(models.Download).filter(models.Download.id == track_db_id).first()
+        if track:
+            track.status = "Failed"
+            db.commit()
+    finally:
+        if close_db:
+            db.close()
+
+
+def retry_job_batch(job_id: str, db: Session | None = None):
+    """Background worker task to retry all child tracks in a job batch that are in Queued state."""
+    close_db = False
+    if db is None:
+        db = SessionLocal()
+        close_db = True
+    try:
+        queued_tracks = (
+            db.query(models.Download)
+            .filter(
+                models.Download.job_id == job_id,
+                models.Download.synced_playlist_id.is_(None),
+                models.Download.status == "Queued",
+            )
+            .all()
+        )
+        if not queued_tracks:
+            logger.info(f"No queued tracks found to retry for job {job_id}")
+            return
+
+        for track in queued_tracks:
+            tid = str(track.track_id or "")
+            if download_manager.is_job_aborted(job_id) or (tid and download_manager.is_track_aborted(job_id, tid)):
+                track.status = "Aborted"
+                db.commit()
+                continue
+
+            if track.id is not None:
+                retry_single_track(int(track.id), db=db)
+    except Exception as e:
+        logger.error(f"Error executing batch retry for job {job_id}: {e}", exc_info=True)
+    finally:
+        if close_db:
+            db.close()
