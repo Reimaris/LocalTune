@@ -12,6 +12,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from fastapi import (
     BackgroundTasks,
@@ -24,7 +25,7 @@ from fastapi import (
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import or_, text
+from sqlalchemy import String, and_, case, cast, func, or_, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -708,13 +709,11 @@ async def api_tracks(
     done = stat_base.filter(models.Download.status == "Completed").count()
     errors = stat_base.filter(models.Download.status == "Failed").count()
 
-    # Main query for display
-    query = db.query(models.Download).filter(models.Download.synced_playlist_id.is_(None))
-
-    # 1. Search filter
+    # Build filter conditions for child tracks
+    filter_conditions: list[Any] = [models.Download.synced_playlist_id.is_(None)]
     if q_str:
         pattern = f"%{q_str}%"
-        query = query.filter(
+        filter_conditions.append(
             or_(
                 models.Download.title.ilike(pattern),
                 models.Download.artist.ilike(pattern),
@@ -722,17 +721,49 @@ async def api_tracks(
             )
         )
 
-    # 2. Status filter
     if status_str and status_str != "all":
         if status_str == "downloading":
-            query = query.filter(
+            filter_conditions.append(
                 models.Download.status.in_(["Downloading", "Queued", "Fetching Metadata"])
             )
         else:
-            query = query.filter(models.Download.status.ilike(status_str))
+            filter_conditions.append(models.Download.status.ilike(status_str))
 
-    # 3. Total count & pagination bounds
-    total_count = query.count()
+    is_job = and_(
+        models.Download.job_id.isnot(None),
+        models.Download.job_id != "",
+        models.Download.job_title.isnot(None),
+    )
+    unit_expr = case(
+        (is_job, func.concat("job_", models.Download.job_id)),
+        else_=func.concat("track_", cast(models.Download.id, String)),
+    )
+    job_id_expr = case((is_job, models.Download.job_id), else_=None)
+    track_id_expr = case((is_job, None), else_=models.Download.id)
+
+    sort_date = func.max(models.Download.downloaded_at)
+    sort_id = func.max(models.Download.id)
+    sort_title = func.max(case((is_job, models.Download.job_title), else_=models.Download.title))
+    sort_artist = func.max(case((is_job, ""), else_=models.Download.artist))
+    sort_status = func.max(models.Download.status)
+
+    unit_query = (
+        db.query(
+            unit_expr.label("unit_key"),
+            job_id_expr.label("job_id"),
+            track_id_expr.label("track_id"),
+            sort_date.label("sort_date"),
+            sort_id.label("sort_id"),
+            sort_title.label("sort_title"),
+            sort_artist.label("sort_artist"),
+            sort_status.label("sort_status"),
+        )
+        .filter(*filter_conditions)
+        .group_by(unit_expr)
+    )
+
+    # 3. Total count & pagination bounds (based on Top-Level Display Units)
+    total_count = unit_query.count()
     total_pages = max(1, math.ceil(total_count / ps_val))
     current_page = max(1, min(p_val, total_pages))
     offset = (current_page - 1) * ps_val
@@ -740,71 +771,101 @@ async def api_tracks(
     end_item = min(offset + ps_val, total_count)
 
     # 4. Sorting
-    allowed_sort = {
-        "downloaded_at": models.Download.downloaded_at,
-        "id": models.Download.id,
-        "title": models.Download.title,
-        "artist": models.Download.artist,
-        "status": models.Download.status,
+    allowed_sort: dict[str, Any] = {
+        "downloaded_at": sort_date,
+        "id": sort_id,
+        "title": sort_title,
+        "artist": sort_artist,
+        "status": sort_status,
     }
-    sort_col = allowed_sort.get(sort_by_str, models.Download.downloaded_at)
+    sort_col: Any = allowed_sort.get(sort_by_str, sort_date)
     if order_str == "asc":
-        query = query.order_by(sort_col.asc(), models.Download.id.asc())
+        unit_query = unit_query.order_by(sort_col.asc(), sort_id.asc())
     else:
-        query = query.order_by(sort_col.desc(), models.Download.id.desc())
+        unit_query = unit_query.order_by(sort_col.desc(), sort_id.desc())
 
-    # 5. Fetch page slice
-    tracks = query.offset(offset).limit(ps_val).all()
+    # 5. Fetch page slice of units
+    units = unit_query.offset(offset).limit(ps_val).all()
 
-    grouped_jobs: dict[str, list] = {}
-    for t in tracks:
-        if t.job_id:
-            if t.job_id not in grouped_jobs:
-                grouped_jobs[t.job_id] = []
-            grouped_jobs[t.job_id].append(t)
+    page_track_ids: list[int] = [int(u.track_id) for u in units if u.track_id is not None]
+    page_job_ids: list[str] = [str(u.job_id) for u in units if u.job_id is not None]
 
-    seen_jobs = set()
-    display_items = []
+    standalone_tracks: dict[int, models.Download] = {}
+    if page_track_ids:
+        for t in db.query(models.Download).filter(models.Download.id.in_(page_track_ids)).all():
+            if t.id is not None:
+                standalone_tracks[t.id] = t
 
-    for t in tracks:
-        if not t.job_id or not t.job_title:
-            display_items.append({"type": "track", "item": t})
-        else:
-            if t.job_id not in seen_jobs:
-                seen_jobs.add(t.job_id)
-                job_tracks = grouped_jobs[t.job_id]
-
-                statuses = [child.status for child in job_tracks]
-                has_retryable = any(s in ("Failed", "Aborted", "Deleted") for s in statuses)
-                if (
-                    "Downloading" in statuses
-                    or "Queued" in statuses
-                    or "Fetching Metadata" in statuses
-                ):
-                    job_status = "Downloading"
-                elif "Paused" in statuses:
-                    job_status = "Paused"
-                elif all(s == "Deleted" for s in statuses):
-                    job_status = "Deleted"
-                elif all(s == "Aborted" for s in statuses):
-                    job_status = "Aborted"
-                elif all(s == "Failed" for s in statuses):
-                    job_status = "Failed"
-                elif "Completed" in statuses:
-                    job_status = "Completed"
-                else:
-                    job_status = "Completed"
-
-                display_items.append(
-                    {
-                        "type": "playlist",
-                        "title": t.job_title,
-                        "job_id": t.job_id,
-                        "status": job_status,
-                        "tracks": job_tracks,
-                        "has_retryable": has_retryable,
-                    }
+    job_tracks_map: dict[str, list[models.Download]] = {jid: [] for jid in page_job_ids}
+    if page_job_ids:
+        child_query = db.query(models.Download).filter(
+            models.Download.synced_playlist_id.is_(None),
+            models.Download.job_id.in_(page_job_ids),
+        )
+        if q_str:
+            pattern = f"%{q_str}%"
+            child_query = child_query.filter(
+                or_(
+                    models.Download.title.ilike(pattern),
+                    models.Download.artist.ilike(pattern),
+                    models.Download.job_title.ilike(pattern),
                 )
+            )
+        if status_str and status_str != "all":
+            if status_str == "downloading":
+                child_query = child_query.filter(
+                    models.Download.status.in_(["Downloading", "Queued", "Fetching Metadata"])
+                )
+            else:
+                child_query = child_query.filter(models.Download.status.ilike(status_str))
+
+        for t in child_query.order_by(models.Download.id.asc()).all():
+            if t.job_id in job_tracks_map:
+                job_tracks_map[t.job_id].append(t)
+
+    display_items: list[dict] = []
+    for u in units:
+        if u.job_id is not None:
+            job_tracks = job_tracks_map.get(str(u.job_id), [])
+            if not job_tracks:
+                continue
+            playlist_title = job_tracks[0].job_title or u.sort_title or "Playlist"
+
+            statuses = [child.status for child in job_tracks]
+            has_retryable = any(s in ("Failed", "Aborted", "Deleted") for s in statuses)
+            if (
+                "Downloading" in statuses
+                or "Queued" in statuses
+                or "Fetching Metadata" in statuses
+            ):
+                job_status = "Downloading"
+            elif "Paused" in statuses:
+                job_status = "Paused"
+            elif all(s == "Deleted" for s in statuses):
+                job_status = "Deleted"
+            elif all(s == "Aborted" for s in statuses):
+                job_status = "Aborted"
+            elif all(s == "Failed" for s in statuses):
+                job_status = "Failed"
+            elif "Completed" in statuses:
+                job_status = "Completed"
+            else:
+                job_status = "Completed"
+
+            display_items.append(
+                {
+                    "type": "playlist",
+                    "title": playlist_title,
+                    "job_id": u.job_id,
+                    "status": job_status,
+                    "tracks": job_tracks,
+                    "has_retryable": has_retryable,
+                }
+            )
+        else:
+            tid = int(u.track_id) if u.track_id is not None else None
+            if tid is not None and tid in standalone_tracks:
+                display_items.append({"type": "track", "item": standalone_tracks[tid]})
 
     # Library storage and track metrics for top header metric box
     lib_metrics = get_library_metrics(db)

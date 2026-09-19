@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/version-v2.6.3-pink" alt="Version" />
   <img src="https://img.shields.io/badge/windows-standalone_ready-purple" alt="Windows Standalone" />
   <img src="https://img.shields.io/badge/docker-ready-blue" alt="Docker Ready" />
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
+  <img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" />
 </p>
 
 ---
@@ -95,5 +95,5 @@ For Windows users, LocalTune is available as a self-contained, standalone deskto
 - **Containerization (Linux / NAS):** Single-container Docker image hosted on GitHub Container Registry (`ghcr.io/reimaris/localtune:latest`).
 
 ## License
-
-MIT License.
+ 
+GNU Affero General Public License v3 (AGPLv3). See [LICENSE](LICENSE) for details.
