@@ -206,6 +206,9 @@ def get_db_session() -> Session:
 def pause_active_downloads(db: Session | None = None) -> int:
     """Transition all in-flight 'Downloading', 'Queued', and 'Fetching Metadata' downloads to 'Paused'
     and clean up partial files on disk.
+
+    Active subprocesses are terminated first so that yt-dlp / spotdl are no longer
+    writing to disk by the time partial-file cleanup runs.
     """
     owns_session = False
     if db is None:
@@ -223,6 +226,9 @@ def pause_active_downloads(db: Session | None = None) -> int:
                 t.status = "Paused"
             db.commit()
             logger.info(f"Transitioned {count} active downloads to 'Paused' state on shutdown.")
+
+        # Kill all running subprocesses *before* deleting their output files.
+        download_manager.terminate_all()
         cleanup_all_partial_files()
         return count
     finally:
@@ -230,13 +236,39 @@ def pause_active_downloads(db: Session | None = None) -> int:
             db.close()
 
 
+
 def resume_paused_downloads(db: Session | None = None) -> int:
-    """Automatically resume downloads that were transitioned to 'Paused' upon previous shutdown."""
+    """Automatically resume downloads that were paused on previous shutdown.
+
+    First sweeps any records still stuck in 'Downloading', 'Queued', or
+    'Fetching Metadata' (left by an abrupt kill that bypassed the lifespan
+    shutdown hook) into 'Paused', then re-enqueues all 'Paused' tracks for
+    sequential execution.
+    """
     owns_session = False
     if db is None:
         db = get_db_session()
         owns_session = True
     try:
+        # --- Phase 1: sweep stranded rows left by a crash / force-kill ---
+        stranded = (
+            db.query(models.Download)
+            .filter(
+                models.Download.status.in_(["Downloading", "Queued", "Fetching Metadata"]),
+                models.Download.synced_playlist_id.is_(None),  # only on-demand jobs
+            )
+            .all()
+        )
+        if stranded:
+            for t in stranded:
+                t.status = "Paused"
+            db.commit()
+            logger.info(
+                f"resume_paused_downloads: swept {len(stranded)} stranded track(s) "
+                "from active states to 'Paused' (abrupt shutdown recovery)."
+            )
+
+        # --- Phase 2: re-enqueue all Paused rows for execution ---
         paused_tracks = (
             db.query(models.Download)
             .filter(models.Download.status == "Paused")
@@ -283,6 +315,7 @@ def resume_paused_downloads(db: Session | None = None) -> int:
     finally:
         if owns_session:
             db.close()
+
 
 
 @asynccontextmanager

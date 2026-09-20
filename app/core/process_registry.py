@@ -149,6 +149,30 @@ class DownloadManager:
             logger.warning(f"Error terminating process for {label}: {e}")
 
     # ------------------------------------------------------------------
+    # Shutdown
+    # ------------------------------------------------------------------
+
+    def terminate_all(self) -> int:
+        """Terminate every active download subprocess immediately.
+
+        Called during application shutdown *before* partial-file cleanup so
+        that no subprocess is still writing to disk when we try to delete
+        their output files.  Returns the number of processes that were
+        signalled.
+        """
+        with self._lock:
+            snapshot = dict(self._processes)
+
+        count = 0
+        for (j_id, t_id), proc in snapshot.items():
+            self._terminate_process(proc, f"shutdown / job {j_id} track {t_id}")
+            count += 1
+
+        if count:
+            logger.info(f"terminate_all: signalled {count} active download process(es) on shutdown.")
+        return count
+
+    # ------------------------------------------------------------------
     # Cleanup
     # ------------------------------------------------------------------
 
