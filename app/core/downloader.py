@@ -443,17 +443,64 @@ def get_collision_free_path(target_path: Path) -> Path:
     return candidate
 
 
+def hide_windows_path(path: Path | str) -> bool:
+    """Explicitly marks a directory or file with FILE_ATTRIBUTE_HIDDEN on Windows using ctypes.
+    On non-Windows platforms, this is a safe no-op without throwing errors.
+    """
+    if os.name != "nt":
+        return False
+
+    try:
+        import ctypes
+
+        windll = getattr(ctypes, "windll", None)
+        if windll is None:
+            return False
+        kernel32 = getattr(windll, "kernel32", None)
+        if kernel32 is None:
+            return False
+
+        file_attribute_hidden = 0x02
+        invalid_file_attributes = 0xFFFFFFFF
+        path_str = str(path)
+
+        attrs = kernel32.GetFileAttributesW(path_str)
+        if attrs != invalid_file_attributes:
+            new_attrs = attrs | file_attribute_hidden
+        else:
+            new_attrs = file_attribute_hidden
+
+        ret = kernel32.SetFileAttributesW(path_str, new_attrs)
+        return bool(ret != 0)
+    except Exception as e:
+        logger.warning(f"Failed to set FILE_ATTRIBUTE_HIDDEN on {path}: {e}")
+        return False
+
+
+def ensure_staging_dir(download_dir: str | Path | None = None) -> Path:
+    """Ensures the .temp staging directory exists under download_dir,
+    and explicitly marks it hidden on Windows systems using ctypes.
+    """
+    base_dir = Path(download_dir or DOWNLOAD_DIR)
+    staging_dir = base_dir / ".temp"
+    staging_dir.mkdir(parents=True, exist_ok=True)
+
+    hide_windows_path(staging_dir)
+
+    return staging_dir
+
+
 def write_m3u8(
     playlist_dir: Path | str,
     db: Session | None = None,
     tracks: list[models.Download] | None = None,
 ) -> Path | None:
-    """Writes or refreshes a standardized UTF-8 playlist.m3u8 file inside playlist_dir.
+    """Writes or refreshes a standardized UTF-8 _playlist.m3u8 file inside playlist_dir.
 
     All track entries strictly use relative filenames so the music folder can be
     moved or mounted across media servers, network shares, and mobile players without broken links.
     Conforms strictly to #EXTM3U and #EXTINF metadata standards.
-    If no completed tracks remain on disk, removes any existing playlist.m3u8 and returns None.
+    If no completed tracks remain on disk, removes any existing _playlist.m3u8 and legacy playlist.m3u8 and returns None.
     """
     p_dir = Path(playlist_dir).resolve()
     # Guard against generating in root download directory or non-directory
@@ -502,14 +549,23 @@ def write_m3u8(
                 title = (t.title or "").strip()
                 valid_tracks.append((artist, title, rel))
 
-        m3u8_path = p_dir / "playlist.m3u8"
+        m3u8_path = p_dir / "_playlist.m3u8"
+        legacy_m3u8_path = p_dir / "playlist.m3u8"
+
+        # Always remove any legacy playlist.m3u8 if present
+        if legacy_m3u8_path.exists():
+            try:
+                legacy_m3u8_path.unlink()
+                logger.info(f"Removed legacy playlist.m3u8 from {p_dir}")
+            except OSError as e:
+                logger.warning(f"Could not remove legacy {legacy_m3u8_path}: {e}")
 
         if not valid_tracks:
-            # No completed audio files remain; remove existing m3u8 if present
+            # No completed audio files remain; remove existing _playlist.m3u8 if present
             if m3u8_path.exists():
                 try:
                     m3u8_path.unlink()
-                    logger.info(f"Removed empty playlist.m3u8 from {p_dir}")
+                    logger.info(f"Removed empty _playlist.m3u8 from {p_dir}")
                 except OSError as e:
                     logger.warning(f"Could not remove {m3u8_path}: {e}")
             return None
@@ -526,7 +582,7 @@ def write_m3u8(
         content = "\n".join(lines) + "\n"
         m3u8_path.write_text(content, encoding="utf-8")
         logger.info(
-            f"Generated playlist.m3u8 at {m3u8_path} with {len(valid_tracks)} tracks."
+            f"Generated _playlist.m3u8 at {m3u8_path} with {len(valid_tracks)} tracks."
         )
         return m3u8_path
     finally:
@@ -678,8 +734,7 @@ def handle_spotify(
                 source_url=track_source_url,
             )
 
-            staging_dir = Path(DOWNLOAD_DIR) / ".temp"
-            staging_dir.mkdir(parents=True, exist_ok=True)
+            staging_dir = ensure_staging_dir(DOWNLOAD_DIR)
 
             final_file_path = (
                 f"{DOWNLOAD_DIR}/{sanitized_list_name}/{sanitized_artist} - {sanitized_title}.{file_format}"
@@ -990,8 +1045,7 @@ def handle_ytdlp(
                 source_url=track_source_url,
             )
 
-            staging_dir = Path(DOWNLOAD_DIR) / ".temp"
-            staging_dir.mkdir(parents=True, exist_ok=True)
+            staging_dir = ensure_staging_dir(DOWNLOAD_DIR)
 
             final_file_path = (
                 f"{DOWNLOAD_DIR}/{sanitized_playlist_title}/{sanitized_title}.{file_format}"

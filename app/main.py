@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 
 from app.core.downloader import (
     DOWNLOAD_DIR,
+    ensure_staging_dir,
     fetch_playlist_title,
     get_canonical_source_url,
     inspect_url_tracks,
@@ -328,6 +329,7 @@ async def lifespan(app: FastAPI):
     """
     try:
         cleanup_all_partial_files()
+        ensure_staging_dir()
     except Exception as e:
         logger.error(f"Error purging partial files on startup: {e}", exc_info=True)
 
