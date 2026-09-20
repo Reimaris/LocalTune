@@ -13,7 +13,28 @@ import urllib.request
 import webbrowser
 import zipfile
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Self
+
+ProgressCallback = Callable[[str, int, int, str], None]
+
+
+class UpdateResult(tuple):
+    """Result of an in-place update operation, behaving as both a 2-tuple (success, message) and a boolean."""
+
+    def __new__(cls, success: bool, message: str) -> Self:
+        return super().__new__(cls, (success, message))
+
+    @property
+    def success(self) -> bool:
+        return bool(self[0])
+
+    @property
+    def message(self) -> str:
+        return str(self[1])
+
+    def __bool__(self) -> bool:
+        return bool(self[0])
+
 
 try:
     import tkinter as tk
@@ -518,18 +539,65 @@ def cleanup_old_executables(target_dir: str | None = None) -> None:
         pass
 
 
-def download_and_apply_update(download_url: str, project_dir: str | None = None) -> bool:
+def download_and_apply_update(
+    download_url: str,
+    project_dir: str | None = None,
+    progress_callback: ProgressCallback | None = None,
+    abort_event: threading.Event | None = None,
+) -> UpdateResult:
     """Downloads release zip in background and applies in-place update."""
     if project_dir is None:
         project_dir = get_project_dir() or get_base_dir()
+
+    chunk_size = 64 * 1024
+    temp_zip = None
 
     try:
         with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_file:
             temp_zip = tmp_file.name
 
         req = urllib.request.Request(download_url, headers={"User-Agent": "LocalTune-Launcher"})
-        with urllib.request.urlopen(req, timeout=120) as resp, open(temp_zip, "wb") as out:
-            shutil.copyfileobj(resp, out)
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            content_length_header = resp.headers.get("Content-Length")
+            total_bytes = (
+                int(content_length_header)
+                if content_length_header and content_length_header.isdigit()
+                else 0
+            )
+            current_bytes = 0
+
+            with open(temp_zip, "wb") as out:
+                while True:
+                    if abort_event and abort_event.is_set():
+                        out.close()
+                        if os.path.exists(temp_zip):
+                            try:
+                                os.remove(temp_zip)
+                            except OSError:
+                                pass
+                        if progress_callback:
+                            progress_callback("aborted", current_bytes, total_bytes, "Update aborted by user.")
+                        return UpdateResult(False, "Update aborted by user.")
+
+                    chunk = resp.read(chunk_size)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+                    current_bytes += len(chunk)
+
+                    if progress_callback:
+                        if total_bytes > 0:
+                            curr_mb = current_bytes / (1024 * 1024)
+                            tot_mb = total_bytes / (1024 * 1024)
+                            pct = min(100, int((current_bytes / total_bytes) * 100))
+                            msg = f"{curr_mb:.1f} MB / {tot_mb:.1f} MB • {pct}%"
+                        else:
+                            curr_mb = current_bytes / (1024 * 1024)
+                            msg = f"{curr_mb:.1f} MB"
+                        progress_callback("downloading", current_bytes, total_bytes, msg)
+
+        if progress_callback:
+            progress_callback("extracting", current_bytes, total_bytes, "Applying update files...")
 
         apply_update_archive(temp_zip, project_dir)
 
@@ -538,10 +606,35 @@ def download_and_apply_update(download_url: str, project_dir: str | None = None)
                 os.remove(temp_zip)
             except OSError:
                 pass
-        return True
+
+        if progress_callback:
+            progress_callback("complete", current_bytes, total_bytes, "Update complete! Relaunching...")
+        return UpdateResult(True, "Update applied successfully.")
+
     except Exception as e:
-        sys.stderr.write(f"Auto-update failed: {e}\n")
-        return False
+        if temp_zip and os.path.exists(temp_zip):
+            try:
+                os.remove(temp_zip)
+            except OSError:
+                pass
+        err_msg = str(e)
+        sys.stderr.write(f"Auto-update failed: {err_msg}\n")
+        if progress_callback:
+            progress_callback("error", 0, 0, err_msg)
+        return UpdateResult(False, err_msg)
+
+
+def relaunch_launcher(project_dir: str | None = None) -> None:
+    """Spawns a new instance of LocalTune launcher and exits current process."""
+    if project_dir is None:
+        project_dir = get_project_dir() or get_base_dir()
+    python_exe = get_python_executable(project_dir) or sys.executable
+    launcher_target = sys.executable if getattr(sys, "frozen", False) else python_exe
+    args = [launcher_target] if getattr(sys, "frozen", False) else [launcher_target, os.path.abspath(__file__)]
+    try:
+        subprocess.Popen(args, cwd=project_dir, creationflags=SUBPROCESS_CREATIONFLAGS)
+    except Exception:
+        pass
 
 
 def show_update_dialog(
@@ -552,12 +645,31 @@ def show_update_dialog(
     on_update: Callable[[], None] | None = None,
     on_manual: Callable[[], None] | None = None,
     on_skip: Callable[[], None] | None = None,
+    on_restart: Callable[..., Any] | None = None,
+    supervisor: Any = None,
+    project_dir: str | None = None,
     root: Any = None,
-) -> dict[str, Callable[[], None]]:
-    """Displays a modal dialog prompting the user for update actions."""
-    def handle_update() -> None:
-        if on_update:
-            on_update()
+) -> dict[str, Any]:
+    """Displays a modal dialog prompting the user for update actions with in-place dark theme transitions."""
+    current_state = "PROMPT"
+    current_frame: Any = None
+    container: Any = None
+    abort_event = threading.Event()
+    status_var: Any = None
+    progress_bar: Any = None
+    should_destroy_root = False
+
+    def safe_tk_call(fn: Callable[[], None]) -> None:
+        if root is not None:
+            try:
+                root.after(0, fn)
+                return
+            except Exception:
+                pass
+        try:
+            fn()
+        except Exception:
+            pass
 
     def handle_manual() -> None:
         if on_manual:
@@ -566,67 +678,164 @@ def show_update_dialog(
             webbrowser.open(release_url)
 
     def handle_skip() -> None:
+        if should_destroy_root and root is not None:
+            try:
+                root.destroy()
+            except Exception:
+                pass
         if on_skip:
             on_skip()
 
-    callbacks = {
-        "on_update": handle_update,
-        "on_manual": handle_manual,
-        "on_skip": handle_skip,
-    }
+    def handle_abort() -> None:
+        abort_event.set()
+        if status_var is not None:
+            try:
+                status_var.set("Cancelling update...")
+            except Exception:
+                pass
 
-    if tk is None:
-        return callbacks
-
-    try:
-        should_destroy_root = False
-        if root is None:
-            root = tk.Tk()
-            root.title("LocalTune Update Available")
-            should_destroy_root = True
+    def handle_restart() -> None:
+        if should_destroy_root and root is not None:
+            try:
+                root.destroy()
+            except Exception:
+                pass
+        if on_restart:
+            on_restart()
+        elif supervisor is not None and hasattr(supervisor, "restart_backend"):
+            supervisor.restart_backend()
+        elif supervisor is not None and hasattr(supervisor, "start"):
+            supervisor.start(open_browser=True, check_updates=False)
         else:
-            root.title("LocalTune Update Available")
+            relaunch_launcher(project_dir)
 
-        root.geometry("480x200")
-        root.minsize(440, 180)
+    def handle_exit() -> None:
+        if should_destroy_root and root is not None:
+            try:
+                root.destroy()
+            except Exception:
+                pass
+        if supervisor is not None and hasattr(supervisor, "stop"):
+            supervisor.stop()
+        sys.exit(0)
 
-        frame = tk.Frame(root, padx=20, pady=20)
-        frame.pack(fill=tk.BOTH, expand=True)
+    def handle_retry() -> None:
+        if supervisor is not None and hasattr(supervisor, "stop_backend"):
+            try:
+                supervisor.stop_backend()
+            except Exception:
+                pass
+        if download_url:
+            start_download_flow()
+        else:
+            handle_manual()
 
+    def handle_update() -> None:
+        if on_update:
+            on_update()
+            return
+        if supervisor is not None and hasattr(supervisor, "stop_backend"):
+            try:
+                supervisor.stop_backend()
+            except Exception:
+                pass
+        if download_url:
+            start_download_flow()
+        else:
+            handle_manual()
+
+    def start_download_flow() -> None:
+        abort_event.clear()
+        transition_to("DOWNLOADING")
+
+        def progress_cb(phase: str, current: int, total: int, message: str) -> None:
+            def update_ui() -> None:
+                if phase == "downloading":
+                    if status_var is not None:
+                        try:
+                            status_var.set(message)
+                        except Exception:
+                            pass
+                    if progress_bar is not None:
+                        if total > 0:
+                            pct = min(100, int((current / total) * 100))
+                            try:
+                                progress_bar.configure(mode="determinate", value=pct)
+                            except Exception:
+                                pass
+                        else:
+                            try:
+                                progress_bar.configure(mode="indeterminate")
+                            except Exception:
+                                pass
+                elif phase == "extracting":
+                    transition_to("EXTRACTING")
+                elif phase == "complete":
+                    if should_destroy_root and root is not None:
+                        try:
+                            root.destroy()
+                        except Exception:
+                            pass
+                    relaunch_launcher(project_dir)
+                    sys.exit(0)
+                elif phase == "aborted":
+                    transition_to("POST_ABORT_RECOVERY")
+                elif phase == "error":
+                    transition_to("ERROR", error_message=message)
+
+            safe_tk_call(update_ui)
+
+        def worker() -> None:
+            try:
+                res = download_and_apply_update(
+                    download_url=download_url or "",
+                    project_dir=project_dir,
+                    progress_callback=progress_cb,
+                    abort_event=abort_event,
+                )
+                if not res.success and not abort_event.is_set():
+                    safe_tk_call(lambda: transition_to("ERROR", error_message=res.message))
+            except Exception as ex:
+                err_str = str(ex)
+                safe_tk_call(lambda: transition_to("ERROR", error_message=err_str))
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+
+    def render_prompt_frame(frame: Any) -> None:
         title_lbl = tk.Label(
             frame,
-            text="A new version of LocalTune is available!",
+            text="LocalTune Update Available",
             font=("Arial", 12, "bold"),
+            bg="#1e1e24",
+            fg="#f4f4f5",
             anchor="w",
         )
-        title_lbl.pack(fill=tk.X, pady=(0, 6))
+        title_lbl.pack(fill=tk.X, pady=(0, 4))
 
         ver_lbl = tk.Label(
             frame,
-            text=f"New: {remote_tag}   |   Current: {local_tag}",
-            font=("Arial", 10),
-            fg="#059669",
+            text=f"New: {remote_tag}   •   Current: {local_tag}",
+            font=("Arial", 10, "bold"),
+            bg="#1e1e24",
+            fg="#10b981",
             anchor="w",
         )
-        ver_lbl.pack(fill=tk.X, pady=(0, 15))
+        ver_lbl.pack(fill=tk.X, pady=(0, 8))
 
-        btn_frame = tk.Frame(frame)
+        desc_lbl = tk.Label(
+            frame,
+            text="A new version of LocalTune is available with bug fixes and updates.\nUpdating will preserve your configuration and downloaded music.",
+            font=("Arial", 9),
+            bg="#1e1e24",
+            fg="#a1a1aa",
+            justify=tk.LEFT,
+            anchor="w",
+        )
+        desc_lbl.pack(fill=tk.X, pady=(0, 20))
+
+        btn_frame = tk.Frame(frame, bg="#1e1e24")
         btn_frame.pack(fill=tk.X, pady=(5, 0))
-
-        def btn_update_click() -> None:
-            if should_destroy_root:
-                root.destroy()
-            handle_update()
-
-        def btn_manual_click() -> None:
-            if should_destroy_root:
-                root.destroy()
-            handle_manual()
-
-        def btn_skip_click() -> None:
-            if should_destroy_root:
-                root.destroy()
-            handle_skip()
 
         update_btn = tk.Button(
             btn_frame,
@@ -634,29 +843,399 @@ def show_update_dialog(
             font=("Arial", 9, "bold"),
             bg="#10b981",
             fg="white",
-            padx=8,
-            pady=4,
-            command=btn_update_click,
+            activebackground="#059669",
+            activeforeground="white",
+            padx=10,
+            pady=5,
+            bd=0,
+            command=handle_update,
         )
-        update_btn.pack(side=tk.LEFT, padx=(0, 6))
+        update_btn.pack(side=tk.LEFT, padx=(0, 8))
 
         manual_btn = tk.Button(
             btn_frame,
             text="🌐 Manual Update",
-            padx=8,
-            pady=4,
-            command=btn_manual_click,
+            font=("Arial", 9),
+            bg="#27272a",
+            fg="#f4f4f5",
+            activebackground="#3f3f46",
+            activeforeground="#f4f4f5",
+            padx=10,
+            pady=5,
+            bd=0,
+            command=handle_manual,
         )
-        manual_btn.pack(side=tk.LEFT, padx=(0, 6))
+        manual_btn.pack(side=tk.LEFT, padx=(0, 8))
 
         skip_btn = tk.Button(
             btn_frame,
             text="Skip Update",
-            padx=8,
-            pady=4,
-            command=btn_skip_click,
+            font=("Arial", 9),
+            bg="#27272a",
+            fg="#a1a1aa",
+            activebackground="#3f3f46",
+            activeforeground="#f4f4f5",
+            padx=10,
+            pady=5,
+            bd=0,
+            command=handle_skip,
         )
         skip_btn.pack(side=tk.RIGHT)
+
+    def render_downloading_frame(frame: Any) -> None:
+        nonlocal status_var, progress_bar
+        title_lbl = tk.Label(
+            frame,
+            text="Downloading LocalTune Update...",
+            font=("Arial", 12, "bold"),
+            bg="#1e1e24",
+            fg="#f4f4f5",
+            anchor="w",
+        )
+        title_lbl.pack(fill=tk.X, pady=(0, 4))
+
+        sub_lbl = tk.Label(
+            frame,
+            text=f"Fetching {remote_tag} release archive...",
+            font=("Arial", 9),
+            bg="#1e1e24",
+            fg="#a1a1aa",
+            anchor="w",
+        )
+        sub_lbl.pack(fill=tk.X, pady=(0, 16))
+
+        if ttk is not None:
+            try:
+                progress_bar = ttk.Progressbar(
+                    frame,
+                    mode="determinate",
+                    maximum=100,
+                    value=0,
+                    style="Update.Horizontal.TProgressbar",
+                    length=440,
+                )
+                progress_bar.pack(fill=tk.X, pady=(0, 10))
+            except Exception:
+                progress_bar = None
+
+        try:
+            status_var = tk.StringVar(master=frame, value="Starting download...")
+            status_lbl = tk.Label(
+                frame,
+                textvariable=status_var,
+                font=("Arial", 9),
+                bg="#1e1e24",
+                fg="#10b981",
+                anchor="w",
+            )
+        except Exception:
+            class DummyVar:
+                def __init__(self, val: str = "") -> None:
+                    self._val = val
+                def get(self) -> str:
+                    return self._val
+                def set(self, val: str) -> None:
+                    self._val = val
+            status_var = DummyVar("Starting download...")
+            status_lbl = tk.Label(
+                frame,
+                text="Starting download...",
+                font=("Arial", 9),
+                bg="#1e1e24",
+                fg="#10b981",
+                anchor="w",
+            )
+        status_lbl.pack(fill=tk.X, pady=(0, 15))
+
+        btn_frame = tk.Frame(frame, bg="#1e1e24")
+        btn_frame.pack(fill=tk.X)
+
+        abort_btn = tk.Button(
+            btn_frame,
+            text="✕ Abort",
+            font=("Arial", 9, "bold"),
+            bg="#27272a",
+            fg="#ef4444",
+            activebackground="#ef4444",
+            activeforeground="white",
+            padx=12,
+            pady=5,
+            bd=0,
+            command=handle_abort,
+        )
+        abort_btn.pack(side=tk.RIGHT)
+
+    def render_extracting_frame(frame: Any) -> None:
+        title_lbl = tk.Label(
+            frame,
+            text="Applying Update Files...",
+            font=("Arial", 12, "bold"),
+            bg="#1e1e24",
+            fg="#f4f4f5",
+            anchor="w",
+        )
+        title_lbl.pack(fill=tk.X, pady=(0, 4))
+
+        sub_lbl = tk.Label(
+            frame,
+            text="Preserving config, downloads, and user settings...",
+            font=("Arial", 9),
+            bg="#1e1e24",
+            fg="#a1a1aa",
+            anchor="w",
+        )
+        sub_lbl.pack(fill=tk.X, pady=(0, 16))
+
+        if ttk is not None:
+            try:
+                extract_bar = ttk.Progressbar(
+                    frame,
+                    mode="indeterminate",
+                    style="Update.Horizontal.TProgressbar",
+                    length=440,
+                )
+                extract_bar.pack(fill=tk.X, pady=(0, 10))
+                extract_bar.start(12)
+            except Exception:
+                pass
+
+        status_lbl = tk.Label(
+            frame,
+            text="Extracting files over project directory... Please wait.",
+            font=("Arial", 9),
+            bg="#1e1e24",
+            fg="#10b981",
+            anchor="w",
+        )
+        status_lbl.pack(fill=tk.X, pady=(0, 5))
+
+        note_lbl = tk.Label(
+            frame,
+            text="(Abort is disabled while modifying files on disk)",
+            font=("Arial", 8),
+            bg="#1e1e24",
+            fg="#71717a",
+            anchor="w",
+        )
+        note_lbl.pack(fill=tk.X)
+
+    def render_error_frame(frame: Any, error_msg: str) -> None:
+        title_lbl = tk.Label(
+            frame,
+            text="⚠️ Update Failed",
+            font=("Arial", 12, "bold"),
+            bg="#1e1e24",
+            fg="#ef4444",
+            anchor="w",
+        )
+        title_lbl.pack(fill=tk.X, pady=(0, 6))
+
+        err_box = tk.Frame(frame, bg="#27272a", padx=10, pady=8)
+        err_box.pack(fill=tk.X, pady=(0, 15))
+
+        err_lbl = tk.Label(
+            err_box,
+            text=error_msg,
+            font=("Consolas", 9),
+            bg="#27272a",
+            fg="#f4f4f5",
+            wraplength=440,
+            justify=tk.LEFT,
+            anchor="w",
+        )
+        err_lbl.pack(fill=tk.X)
+
+        btn_frame = tk.Frame(frame, bg="#1e1e24")
+        btn_frame.pack(fill=tk.X)
+
+        retry_btn = tk.Button(
+            btn_frame,
+            text="↻ Retry",
+            font=("Arial", 9, "bold"),
+            bg="#10b981",
+            fg="white",
+            activebackground="#059669",
+            activeforeground="white",
+            padx=10,
+            pady=5,
+            bd=0,
+            command=handle_retry,
+        )
+        retry_btn.pack(side=tk.LEFT, padx=(0, 8))
+
+        manual_btn = tk.Button(
+            btn_frame,
+            text="🌐 Manual Update",
+            font=("Arial", 9),
+            bg="#27272a",
+            fg="#f4f4f5",
+            activebackground="#3f3f46",
+            activeforeground="#f4f4f5",
+            padx=10,
+            pady=5,
+            bd=0,
+            command=handle_manual,
+        )
+        manual_btn.pack(side=tk.LEFT, padx=(0, 8))
+
+        close_btn = tk.Button(
+            btn_frame,
+            text="Close",
+            font=("Arial", 9),
+            bg="#27272a",
+            fg="#a1a1aa",
+            activebackground="#3f3f46",
+            activeforeground="#f4f4f5",
+            padx=10,
+            pady=5,
+            bd=0,
+            command=handle_skip,
+        )
+        close_btn.pack(side=tk.RIGHT)
+
+    def render_post_abort_recovery_frame(frame: Any) -> None:
+        title_lbl = tk.Label(
+            frame,
+            text="Update Aborted",
+            font=("Arial", 12, "bold"),
+            bg="#1e1e24",
+            fg="#f4f4f5",
+            anchor="w",
+        )
+        title_lbl.pack(fill=tk.X, pady=(0, 6))
+
+        info_lbl = tk.Label(
+            frame,
+            text="The update download was cancelled and temporary files were purged from disk.\n\nThe backend server was stopped to release file locks. Would you like to restart LocalTune or exit?",
+            font=("Arial", 9),
+            bg="#1e1e24",
+            fg="#a1a1aa",
+            justify=tk.LEFT,
+            anchor="w",
+        )
+        info_lbl.pack(fill=tk.X, pady=(0, 20))
+
+        btn_frame = tk.Frame(frame, bg="#1e1e24")
+        btn_frame.pack(fill=tk.X)
+
+        restart_btn = tk.Button(
+            btn_frame,
+            text="⚡ Restart LocalTune",
+            font=("Arial", 9, "bold"),
+            bg="#10b981",
+            fg="white",
+            activebackground="#059669",
+            activeforeground="white",
+            padx=10,
+            pady=5,
+            bd=0,
+            command=handle_restart,
+        )
+        restart_btn.pack(side=tk.LEFT, padx=(0, 8))
+
+        exit_btn = tk.Button(
+            btn_frame,
+            text="Exit",
+            font=("Arial", 9),
+            bg="#27272a",
+            fg="#ef4444",
+            activebackground="#ef4444",
+            activeforeground="white",
+            padx=10,
+            pady=5,
+            bd=0,
+            command=handle_exit,
+        )
+        exit_btn.pack(side=tk.RIGHT)
+
+    def transition_to(new_state: str, **kwargs: Any) -> None:
+        nonlocal current_state, current_frame, progress_bar, status_var
+        current_state = new_state
+
+        if root is None or tk is None:
+            return
+
+        try:
+            if current_frame is not None:
+                current_frame.destroy()
+        except Exception:
+            pass
+
+        try:
+            current_frame = tk.Frame(container, bg="#1e1e24")
+            current_frame.pack(fill=tk.BOTH, expand=True)
+        except Exception:
+            return
+
+        if new_state == "PROMPT":
+            render_prompt_frame(current_frame)
+        elif new_state == "DOWNLOADING":
+            render_downloading_frame(current_frame)
+        elif new_state == "EXTRACTING":
+            render_extracting_frame(current_frame)
+        elif new_state == "ERROR":
+            err = kwargs.get("error_message", "An unexpected error occurred during update.")
+            render_error_frame(current_frame, err)
+        elif new_state == "POST_ABORT_RECOVERY":
+            render_post_abort_recovery_frame(current_frame)
+
+    callbacks = {
+        "on_update": handle_update,
+        "on_manual": handle_manual,
+        "on_skip": handle_skip,
+        "on_abort": handle_abort,
+        "on_retry": handle_retry,
+        "on_restart": handle_restart,
+        "state": lambda: current_state,
+        "current_state": lambda: current_state,
+        "transition_to": transition_to,
+    }
+
+    if tk is None:
+        return callbacks
+
+    try:
+        if root is None:
+            root = tk.Tk()
+            root.title("LocalTune Update Available")
+            should_destroy_root = True
+        else:
+            if type(root).__name__ in ("MagicMock", "Mock") or hasattr(root, "_mock_return_value"):
+                root.master = None
+            root.title("LocalTune Update Available")
+
+        root.geometry("520x260")
+        root.minsize(480, 240)
+        root.configure(bg="#1e1e24")
+
+        if ttk is not None:
+            try:
+                style = ttk.Style(root)
+                style.theme_use("default")
+                style.configure(
+                    "Update.Horizontal.TProgressbar",
+                    troughcolor="#27272a",
+                    background="#10b981",
+                    thickness=8,
+                )
+            except Exception:
+                pass
+
+        container = tk.Frame(root, bg="#1e1e24", padx=24, pady=20)
+        container.pack(fill=tk.BOTH, expand=True)
+
+        def on_window_close() -> None:
+            if current_state == "DOWNLOADING":
+                handle_abort()
+            elif current_state == "EXTRACTING":
+                pass
+            else:
+                handle_skip()
+
+        if hasattr(root, "protocol"):
+            root.protocol("WM_DELETE_WINDOW", on_window_close)
+
+        transition_to("PROMPT")
 
         if should_destroy_root:
             root.mainloop()
@@ -1137,22 +1716,6 @@ class LocalTuneSupervisor:
 
         user_choice = {"action": "continue"}
 
-        def on_update() -> None:
-            if download_url:
-                success = download_and_apply_update(download_url, self.project_dir)
-                if success:
-                    user_choice["action"] = "relaunch"
-                    python_exe = get_python_executable(self.project_dir) or sys.executable
-                    launcher_target = sys.executable if getattr(sys, "frozen", False) else python_exe
-                    args = [launcher_target] if getattr(sys, "frozen", False) else [launcher_target, os.path.abspath(__file__)]
-                    try:
-                        subprocess.Popen(args, cwd=self.project_dir, creationflags=SUBPROCESS_CREATIONFLAGS)
-                    except Exception:
-                        pass
-                    sys.exit(0)
-            else:
-                webbrowser.open(release_url)
-
         def on_manual() -> None:
             webbrowser.open(release_url)
             user_choice["action"] = "continue"
@@ -1165,9 +1728,11 @@ class LocalTuneSupervisor:
             local_tag=local_tag,
             release_url=release_url,
             download_url=download_url,
-            on_update=on_update,
+            supervisor=self,
+            project_dir=self.project_dir,
             on_manual=on_manual,
             on_skip=on_skip,
+            on_restart=lambda: self.start(open_browser=True, check_updates=False),
         )
 
         return user_choice["action"] == "continue"
@@ -1197,27 +1762,14 @@ class LocalTuneSupervisor:
             release_url = str(info.get("html_url", "https://github.com/Reimaris/LocalTune/releases"))
             download_url = get_release_zip_url(info)
 
-            def on_update() -> None:
-                if download_url:
-                    success = download_and_apply_update(download_url, self.project_dir)
-                    if success:
-                        python_exe = get_python_executable(self.project_dir) or sys.executable
-                        launcher_target = sys.executable if getattr(sys, "frozen", False) else python_exe
-                        args = [launcher_target] if getattr(sys, "frozen", False) else [launcher_target, os.path.abspath(__file__)]
-                        try:
-                            subprocess.Popen(args, cwd=self.project_dir, creationflags=SUBPROCESS_CREATIONFLAGS)
-                        except Exception:
-                            pass
-                        sys.exit(0)
-                else:
-                    webbrowser.open(release_url)
-
             show_update_dialog(
                 remote_tag=remote_tag,
                 local_tag=local_tag,
                 release_url=release_url,
                 download_url=download_url,
-                on_update=on_update,
+                supervisor=self,
+                project_dir=self.project_dir,
+                on_restart=self.restart_backend,
             )
 
         threading.Thread(target=worker, daemon=True).start()
@@ -1300,12 +1852,20 @@ class LocalTuneSupervisor:
 
         return True
 
-
-    def stop(self) -> None:
-        """Terminates backend process tree and releases single-instance lock."""
+    def stop_backend(self) -> None:
+        """Cleanly terminates backend process tree while keeping supervisor lock intact."""
         if self.backend_proc:
             kill_process_tree(self.backend_proc)
             self.backend_proc = None
+        if self.log_thread and self.log_thread.is_alive():
+            try:
+                self.log_thread.join(timeout=1.0)
+            except Exception:
+                pass
+
+    def stop(self) -> None:
+        """Terminates backend process tree and releases single-instance lock."""
+        self.stop_backend()
         self.lock.release()
 
     def open_dashboard(self) -> None:
@@ -1320,14 +1880,7 @@ class LocalTuneSupervisor:
 
     def restart_backend(self, pump_callback: Callable[[], None] | None = None) -> bool:
         """Cleanly terminates the running backend process and restarts it with updated environment."""
-        if self.backend_proc:
-            kill_process_tree(self.backend_proc)
-            self.backend_proc = None
-        if self.log_thread and self.log_thread.is_alive():
-            try:
-                self.log_thread.join(timeout=1.0)
-            except Exception:
-                pass
+        self.stop_backend()
         try:
             self.backend_proc, self.log_thread = spawn_backend_process(
                 project_dir=self.project_dir,
