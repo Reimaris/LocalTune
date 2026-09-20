@@ -363,7 +363,7 @@ def health_check(db: Session = Depends(get_db)):
             "downloads_count": count,
             "synced_playlists_count": playlists_count,
         }
-    except OSError as e:
+    except Exception as e:
         logger.error(f"Database connection failed: {e}")
         return {"status": "error", "logger": "configured", "database": f"failed: {e}"}
 
@@ -443,7 +443,7 @@ async def download_url(
         )
         db.add(new_download)
         db.commit()
-    except OSError as e:
+    except Exception as e:
         logger.error(f"Failed to insert placeholder download: {e}")
         db.rollback()
 
@@ -934,6 +934,12 @@ async def get_track_delete_summary(
     if not track:
         raise HTTPException(status_code=404, detail="Track not found")
 
+    if track.status in ("Queued", "Downloading"):
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete an active download. Please abort first.",
+        )
+
     total_bytes = 0
     file_exists = False
     if track.file_path and os.path.exists(track.file_path):
@@ -1095,6 +1101,12 @@ async def get_job_delete_summary(
     )
     if not tracks:
         raise HTTPException(status_code=404, detail="Job not found")
+
+    if any(t.status in ("Queued", "Downloading") for t in tracks):
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete an active playlist. Please abort first.",
+        )
 
     total_bytes = 0
     found_files = 0

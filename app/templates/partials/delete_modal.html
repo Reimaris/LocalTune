@@ -1,4 +1,8 @@
-<div id="delete-modal-backdrop" class="fixed inset-0 z-50 overflow-y-auto bg-black/70 flex items-center justify-center p-4">
+<div id="delete-modal-backdrop" 
+     x-data 
+     @keydown.escape.window="document.getElementById('modal-container').innerHTML = '';"
+     onclick="document.getElementById('modal-container').innerHTML = '';"
+     class="fixed inset-0 z-50 overflow-y-auto bg-black/70 flex items-center justify-center p-4">
     <div class="bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-2xl max-w-md w-full p-6 text-left"
          onclick="event.stopPropagation()">
         
