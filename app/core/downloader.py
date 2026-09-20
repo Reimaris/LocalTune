@@ -1038,7 +1038,7 @@ def handle_spotify(
     finally:
         if os.path.exists(temp_file):
             os.remove(temp_file)
-        if is_on_demand:
+        if is_on_demand and track_db_id is None:
             download_manager.cleanup_job(job_id)
 
 
@@ -1459,7 +1459,7 @@ def handle_ytdlp(
         return main_title
 
     finally:
-        if is_on_demand:
+        if is_on_demand and track_db_id is None:
             download_manager.cleanup_job(job_id)
 
 

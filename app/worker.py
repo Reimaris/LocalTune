@@ -187,10 +187,20 @@ def retry_job_batch(job_id: str, db: Session | None = None):
             return
 
         for track in queued_tracks:
+            try:
+                db.refresh(track)
+            except Exception:
+                pass
+
             tid = str(track.track_id or "")
-            if download_manager.is_job_aborted(job_id) or (tid and download_manager.is_track_aborted(job_id, tid)):
-                track.status = "Aborted"
-                db.commit()
+            if (
+                download_manager.is_job_aborted(job_id)
+                or (tid and download_manager.is_track_aborted(job_id, tid))
+                or track.status == "Aborted"
+            ):
+                if track.status != "Completed":
+                    track.status = "Aborted"
+                    db.commit()
                 continue
 
             if track.id is not None:
@@ -198,5 +208,6 @@ def retry_job_batch(job_id: str, db: Session | None = None):
     except Exception as e:
         logger.error(f"Error executing batch retry for job {job_id}: {e}", exc_info=True)
     finally:
+        download_manager.cleanup_job(job_id)
         if close_db:
             db.close()
