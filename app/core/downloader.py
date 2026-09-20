@@ -630,7 +630,7 @@ def handle_spotify(
                     track.get("name", "Unknown Title"),
                     track.get("artist", "Unknown Artist"),
                     None,
-                    "Downloading",
+                    "Queued",
                     job_id,
                     job_title_to_save,
                     synced_playlist_id,
@@ -663,6 +663,20 @@ def handle_spotify(
             sanitized_title = spotdl_sanitize(title)
             sanitized_artist = spotdl_sanitize(artist)
             sanitized_list_name = spotdl_sanitize(list_name) if list_name else ""
+
+            # Elevate active track to Downloading before starting its subprocess
+            insert_download(
+                db,
+                track_id,
+                title,
+                artist,
+                None,
+                "Downloading",
+                job_id,
+                job_title_to_save,
+                synced_playlist_id,
+                source_url=track_source_url,
+            )
 
             file_path = (
                 f"{DOWNLOAD_DIR}/{sanitized_list_name}/{sanitized_artist} - {sanitized_title}.{file_format}"
@@ -912,7 +926,7 @@ def handle_ytdlp(
                     track.get("title", "Unknown Title"),
                     track.get("uploader") or track.get("artist") or "Unknown Artist",
                     None,
-                    "Downloading",
+                    "Queued",
                     job_id,
                     job_title_to_save,
                     synced_playlist_id,
@@ -943,6 +957,20 @@ def handle_ytdlp(
             title = track.get("title", "Unknown Title")
             artist = track.get("uploader") or track.get("artist") or "Unknown Artist"
             sanitized_title = yt_dlp_sanitize(title)
+
+            # Elevate active track to Downloading before starting its subprocess
+            insert_download(
+                db,
+                track_id,
+                title,
+                artist,
+                None,
+                "Downloading",
+                job_id,
+                job_title_to_save,
+                synced_playlist_id,
+                source_url=track_source_url,
+            )
 
             file_path = (
                 f"{DOWNLOAD_DIR}/{sanitized_playlist_title}/{sanitized_title}.{file_format}"
