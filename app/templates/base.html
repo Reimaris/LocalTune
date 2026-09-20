@@ -8,6 +8,7 @@
     <!-- Offline Local Vendor Assets -->
     <script src="/static/vendor/tailwind.js"></script>
     <script src="/static/vendor/htmx.min.js"></script>
+    <script src="/static/vendor/idiomorph-ext.min.js"></script>
     <script defer src="/static/vendor/alpine.min.js"></script>
     <script>
         function formatDeviceTimes(container) {
@@ -69,7 +70,7 @@
         }
     </style>
 </head>
-<body class="min-h-screen font-sans antialiased flex flex-col">
+<body class="min-h-screen font-sans antialiased flex flex-col" hx-ext="morph">
     <!-- Top Navigation Bar -->
     <nav class="bg-[#2a2a32] border-b border-[#3f3f46] shadow-md sticky top-0 z-50">
         <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">

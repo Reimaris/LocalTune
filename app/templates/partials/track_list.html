@@ -403,3 +403,13 @@
         {% endif %}
     </div>
 </div>
+
+{% if has_active_tasks %}
+<div id="track-polling-trigger"
+    hx-get="/api/tracks"
+    hx-trigger="load delay:2s"
+    hx-include="#history-filter-form"
+    hx-target="#tracks-table-container"
+    hx-swap="morph"
+    class="hidden"></div>
+{% endif %}

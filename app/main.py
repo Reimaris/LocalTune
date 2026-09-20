@@ -941,6 +941,7 @@ async def api_tracks(
             "total_items": total_count,
             "start_item": start_item,
             "end_item": end_item,
+            "has_active_tasks": (queued + downloading > 0),
         },
     )
 
