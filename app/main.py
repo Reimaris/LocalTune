@@ -1164,6 +1164,10 @@ async def retry_track(
             detail="Only Failed, Aborted, or Deleted tracks can be retried",
         )
 
+    job_id = track.job_id or track.track_id or ""
+    if track.track_id:
+        download_manager.clear_track_abort(job_id, track.track_id)
+
     track.status = "Queued"
     track.file_path = None
     db.commit()
@@ -1194,6 +1198,8 @@ async def retry_job(
 
     if not retryable_tracks:
         return await _render_tracks(request, db)
+
+    download_manager.clear_job_abort(job_id)
 
     for track in retryable_tracks:
         track.status = "Queued"

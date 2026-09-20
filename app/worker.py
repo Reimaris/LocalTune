@@ -109,6 +109,9 @@ def retry_single_track(track_db_id: int, db: Session | None = None):
             logger.error(f"Cannot retry track {track_db_id}: not found in DB")
             return
 
+        track.status = "Downloading"
+        db.commit()
+
         canonical_url = get_canonical_source_url(track)
         if not canonical_url:
             logger.error(f"Cannot retry track {track_db_id}: could not determine canonical source URL")

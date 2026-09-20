@@ -29,6 +29,8 @@ class DownloadManager:
         self._aborted_tracks: dict[str, set[str]] = {}
         # job_id -> True when the whole job is aborted
         self._aborted_jobs: set[str] = set()
+        # job_id -> set of track_ids explicitly cleared/unaborted
+        self._cleared_tracks: dict[str, set[str]] = {}
 
     # ------------------------------------------------------------------
     # Registration
@@ -53,6 +55,8 @@ class DownloadManager:
     def is_track_aborted(self, job_id: str, track_id: str) -> bool:
         """Returns True if either this specific track or its entire job is aborted."""
         with self._lock:
+            if track_id in self._cleared_tracks.get(job_id, set()):
+                return False
             return (
                 job_id in self._aborted_jobs
                 or track_id in self._aborted_tracks.get(job_id, set())
@@ -73,6 +77,8 @@ class DownloadManager:
         Returns True if the track was in an active state that could be aborted.
         """
         with self._lock:
+            if job_id in self._cleared_tracks:
+                self._cleared_tracks[job_id].discard(track_id)
             # Record the abort signal
             if job_id not in self._aborted_tracks:
                 self._aborted_tracks[job_id] = set()
@@ -91,6 +97,7 @@ class DownloadManager:
         """
         with self._lock:
             self._aborted_jobs.add(job_id)
+            self._cleared_tracks.pop(job_id, None)
             # Also mark as aborted at the track level for completeness
             active_procs = {
                 k: v for k, v in self._processes.items() if k[0] == job_id
@@ -98,6 +105,31 @@ class DownloadManager:
 
         for (j_id, t_id), proc in active_procs.items():
             self._terminate_process(proc, f"job {j_id} / track {t_id}")
+
+    def clear_track_abort(self, job_id: str, track_id: str) -> None:
+        """
+        Clear abort state for an individual track.
+        Used when retrying a single previously aborted track.
+        """
+        with self._lock:
+            if job_id in self._aborted_tracks:
+                self._aborted_tracks[job_id].discard(track_id)
+                if not self._aborted_tracks[job_id]:
+                    self._aborted_tracks.pop(job_id, None)
+            if job_id in self._aborted_jobs:
+                if job_id not in self._cleared_tracks:
+                    self._cleared_tracks[job_id] = set()
+                self._cleared_tracks[job_id].add(track_id)
+
+    def clear_job_abort(self, job_id: str) -> None:
+        """
+        Clear abort state for a job and all its tracks.
+        Used when retrying a previously aborted job batch.
+        """
+        with self._lock:
+            self._aborted_jobs.discard(job_id)
+            self._aborted_tracks.pop(job_id, None)
+            self._cleared_tracks.pop(job_id, None)
 
     def _terminate_process(
         self, proc: "subprocess.Popen[str]", label: str
@@ -127,6 +159,7 @@ class DownloadManager:
                 self._processes.pop(k, None)
             self._aborted_tracks.pop(job_id, None)
             self._aborted_jobs.discard(job_id)
+            self._cleared_tracks.pop(job_id, None)
 
 
 def cleanup_partial_files(
