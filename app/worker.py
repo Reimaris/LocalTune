@@ -177,6 +177,7 @@ def retry_job_batch(job_id: str, db: Session | None = None):
                 models.Download.synced_playlist_id.is_(None),
                 models.Download.status == "Queued",
             )
+            .order_by(models.Download.id.asc())
             .all()
         )
         if not queued_tracks:
