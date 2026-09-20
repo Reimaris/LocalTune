@@ -462,7 +462,7 @@ def get_local_version(project_dir: str | None = None) -> str:
                 return match.group(1)
         except Exception:
             pass
-    return "v2.6.4-rc.5"
+    return "v2.6.4-rc.6"
 
 
 def check_github_release(
