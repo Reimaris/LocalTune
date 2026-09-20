@@ -35,6 +35,7 @@ from app.core.downloader import (
     fetch_playlist_title,
     get_canonical_source_url,
     inspect_url_tracks,
+    migrate_youtube_extractor_keys,
     write_m3u8,
     yt_dlp_sanitize,
 )
@@ -332,6 +333,15 @@ async def lifespan(app: FastAPI):
         ensure_staging_dir()
     except Exception as e:
         logger.error(f"Error purging partial files on startup: {e}", exc_info=True)
+
+    try:
+        startup_db = get_db_session()
+        try:
+            migrate_youtube_extractor_keys(startup_db)
+        finally:
+            startup_db.close()
+    except Exception as e:
+        logger.error(f"Error migrating YouTube extractor keys on startup: {e}", exc_info=True)
 
     try:
         resume_paused_downloads()

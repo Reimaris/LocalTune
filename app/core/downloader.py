@@ -210,9 +210,10 @@ def inspect_url_tracks(
             creationflags=SUBPROCESS_CREATIONFLAGS,
         )
         data = json.loads(res.stdout)
-        extractor = (
+        raw_extractor = (
             data.get("extractor_key") or data.get("extractor") or "ytdlp"
         )
+        extractor = normalize_extractor_key(raw_extractor)
         entries = data.get("entries")
         dupes = 0
         new = 0
@@ -220,7 +221,10 @@ def inspect_url_tracks(
             for entry in entries:
                 raw_id = entry.get("id")
                 if raw_id:
-                    tid = f"{extractor.lower()}_{raw_id}"
+                    entry_extractor = normalize_extractor_key(
+                        entry.get("extractor_key") or entry.get("extractor") or extractor
+                    )
+                    tid = f"{entry_extractor}_{raw_id}"
                     if check_exists(db, tid):
                         dupes += 1
                     else:
@@ -230,7 +234,7 @@ def inspect_url_tracks(
         else:
             raw_id = data.get("id")
             if raw_id:
-                tid = f"{extractor.lower()}_{raw_id}"
+                tid = f"{extractor}_{raw_id}"
                 if check_exists(db, tid):
                     dupes += 1
                 else:
@@ -259,6 +263,10 @@ def get_canonical_source_url(download: models.Download) -> str:
 
     if track_id.startswith("youtube_"):
         raw_id = track_id[len("youtube_"):]
+        if raw_id:
+            return f"https://www.youtube.com/watch?v={raw_id}"
+    elif track_id.startswith("youtubetab_"):
+        raw_id = track_id[len("youtubetab_"):]
         if raw_id:
             return f"https://www.youtube.com/watch?v={raw_id}"
     elif track_id.startswith("spotify_"):
@@ -441,6 +449,91 @@ def get_collision_free_path(target_path: Path) -> Path:
         candidate = parent / f"{base_stem} ({counter}){suffix}"
 
     return candidate
+
+
+def normalize_extractor_key(extractor: str | None) -> str:
+    """Normalizes extractor keys so all YouTube variants (youtubetab, youtube:tab, etc.) map strictly to 'youtube'."""
+    if not extractor:
+        return "ytdlp"
+    ext = extractor.lower().strip()
+    if "youtube" in ext:
+        return "youtube"
+    return ext
+
+
+def migrate_youtube_extractor_keys(db: Session) -> dict[str, int]:
+    """Startup SQLite migration discovering legacy 'youtubetab_%' records,
+    resolving duplicate conflicts with corresponding 'youtube_%' records,
+    and renaming non-conflicting records to canonical 'youtube_{raw_id}'.
+    """
+    stats = {"migrated": 0, "deleted_conflicts": 0}
+    prefix = "youtubetab_"
+    legacy_rows = (
+        db.query(models.Download)
+        .filter(models.Download.track_id.like(f"{prefix}%"))
+        .order_by(models.Download.id.asc())
+        .all()
+    )
+
+    for row in legacy_rows:
+        if not row.track_id or not row.track_id.startswith(prefix):
+            continue
+        raw_id = row.track_id[len(prefix):]
+        canonical_tid = f"youtube_{raw_id}"
+
+        existing = (
+            db.query(models.Download)
+            .filter(models.Download.track_id == canonical_tid)
+            .first()
+        )
+
+        if existing:
+            # Conflict resolution:
+            if existing.status == "Completed" and row.status != "Completed":
+                db.delete(row)
+                stats["deleted_conflicts"] += 1
+            elif row.status == "Completed" and existing.status != "Completed":
+                db.delete(existing)
+                db.flush()
+                row.track_id = canonical_tid
+                stats["deleted_conflicts"] += 1
+                stats["migrated"] += 1
+            elif row.status == "Completed" and existing.status == "Completed":
+                # Both completed: prefer the one with a verified file on disk, or the later record
+                row_has_file = bool(row.file_path and os.path.exists(row.file_path))
+                ext_has_file = bool(existing.file_path and os.path.exists(existing.file_path))
+                if row_has_file and not ext_has_file:
+                    db.delete(existing)
+                    db.flush()
+                    row.track_id = canonical_tid
+                else:
+                    db.delete(row)
+                stats["deleted_conflicts"] += 1
+            else:
+                # Neither is Completed: retain the latest record
+                row_ts = row.downloaded_at.timestamp() if row.downloaded_at is not None else 0.0
+                ext_ts = existing.downloaded_at.timestamp() if existing.downloaded_at is not None else 0.0
+                row_key = (row_ts, row.id or 0)
+                ext_key = (ext_ts, existing.id or 0)
+                if row_key > ext_key:
+                    db.delete(existing)
+                    db.flush()
+                    row.track_id = canonical_tid
+                    stats["migrated"] += 1
+                else:
+                    db.delete(row)
+                stats["deleted_conflicts"] += 1
+        else:
+            # Non-conflicting: rename track_id
+            row.track_id = canonical_tid
+            stats["migrated"] += 1
+
+    db.commit()
+    logger.info(
+        f"YouTube extractor keys migration finished: {stats['migrated']} renamed, "
+        f"{stats['deleted_conflicts']} conflicting orphans deleted."
+    )
+    return stats
 
 
 def hide_windows_path(path: Path | str) -> bool:
@@ -960,9 +1053,10 @@ def handle_ytdlp(
         to_download = []
         metadata = json.loads(result.stdout)
         main_title = metadata.get("title", "Audio Download")
-        extractor = (
+        raw_extractor = (
             metadata.get("extractor_key") or metadata.get("extractor") or "ytdlp"
         )
+        extractor = normalize_extractor_key(raw_extractor)
         entries = metadata.get("entries")
 
         if entries:
@@ -981,7 +1075,10 @@ def handle_ytdlp(
             raw_id = track.get("id")
             if not raw_id:
                 raw_id = uuid.uuid4().hex
-            track_id = f"{extractor.lower()}_{raw_id}"
+            track_extractor = normalize_extractor_key(
+                track.get("extractor_key") or track.get("extractor") or extractor
+            )
+            track_id = f"{track_extractor}_{raw_id}"
 
             # Resolve canonical URL for this track
             track_source_url = track.get("webpage_url") or track.get("url")
@@ -1418,14 +1515,18 @@ def sync_playlist_job(synced_playlist_id: int, db: Session) -> dict:
                 creationflags=SUBPROCESS_CREATIONFLAGS,
             )
             data = json.loads(result.stdout)
-            extractor = data.get("extractor_key") or data.get("extractor") or "ytdlp"
+            raw_extractor = data.get("extractor_key") or data.get("extractor") or "ytdlp"
+            extractor = normalize_extractor_key(raw_extractor)
             entries = data.get("entries") or [data]
             for t in entries:
                 raw_id = t.get("id")
                 if raw_id:
+                    track_ext = normalize_extractor_key(
+                        t.get("extractor_key") or t.get("extractor") or extractor
+                    )
                     remote_tracks.append(
                         (
-                            f"{extractor.lower()}_{raw_id}",
+                            f"{track_ext}_{raw_id}",
                             t.get("title"),
                             t.get("uploader") or t.get("artist"),
                         )
