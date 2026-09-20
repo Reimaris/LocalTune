@@ -37,7 +37,7 @@ from app.core.downloader import (
     write_m3u8,
     yt_dlp_sanitize,
 )
-from app.core.library_metrics import get_library_metrics
+from app.core.library_metrics import format_bytes, get_library_metrics
 from app.core.logging_config import log_generator, setup_logging
 from app.core.process_registry import cleanup_all_partial_files, download_manager
 from app.core.scheduler import periodic_sync_loop
@@ -925,6 +925,39 @@ async def delete_track(request: Request, track_id: int, db: Session = Depends(ge
     return ""
 
 
+@app.get("/api/tracks/{track_id}/delete-summary", response_class=HTMLResponse)
+async def get_track_delete_summary(
+    request: Request, track_id: int, db: Session = Depends(get_db)
+):
+    """Calculates disk footprint for a single track and returns deletion confirmation modal."""
+    track = db.query(models.Download).filter(models.Download.id == track_id).first()
+    if not track:
+        raise HTTPException(status_code=404, detail="Track not found")
+
+    total_bytes = 0
+    file_exists = False
+    if track.file_path and os.path.exists(track.file_path):
+        try:
+            total_bytes = os.path.getsize(track.file_path)
+            file_exists = True
+        except OSError:
+            total_bytes = 0
+            file_exists = False
+
+    formatted_size = format_bytes(total_bytes) if file_exists else "0 B (file not found on disk)"
+
+    context = {
+        "request": request,
+        "item_type": "track",
+        "title": track.title or "Track",
+        "file_count": 1,
+        "total_bytes": total_bytes if file_exists else 0,
+        "formatted_size": formatted_size,
+        "delete_url": f"/api/tracks/{track.id}/delete",
+    }
+    return templates.TemplateResponse("partials/delete_modal.html", context)
+
+
 @app.post("/api/tracks/{track_id}/delete", response_class=HTMLResponse)
 async def soft_delete_track(
     request: Request, track_id: int, db: Session = Depends(get_db)
@@ -1045,6 +1078,49 @@ async def abort_job(request: Request, job_id: str, db: Session = Depends(get_db)
     )
 
     return await _render_tracks(request, db)
+
+
+@app.get("/api/jobs/{job_id}/delete-summary", response_class=HTMLResponse)
+async def get_job_delete_summary(
+    request: Request, job_id: str, db: Session = Depends(get_db)
+):
+    """Calculates disk footprint for an on-demand playlist job and returns deletion confirmation modal."""
+    tracks = (
+        db.query(models.Download)
+        .filter(
+            models.Download.job_id == job_id,
+            models.Download.synced_playlist_id.is_(None),
+        )
+        .all()
+    )
+    if not tracks:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    total_bytes = 0
+    found_files = 0
+    for track in tracks:
+        if track.file_path and os.path.exists(track.file_path):
+            try:
+                total_bytes += os.path.getsize(track.file_path)
+                found_files += 1
+            except OSError:
+                pass
+
+    playlist_title = tracks[0].job_title or tracks[0].title or "Playlist"
+    formatted_size = (
+        format_bytes(total_bytes) if found_files > 0 else "0 B (file not found on disk)"
+    )
+
+    context = {
+        "request": request,
+        "item_type": "job",
+        "title": playlist_title,
+        "file_count": len(tracks),
+        "total_bytes": total_bytes if found_files > 0 else 0,
+        "formatted_size": formatted_size,
+        "delete_url": f"/api/jobs/{job_id}/delete",
+    }
+    return templates.TemplateResponse("partials/delete_modal.html", context)
 
 
 @app.post("/api/jobs/{job_id}/delete", response_class=HTMLResponse)

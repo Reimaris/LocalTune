@@ -1,0 +1,76 @@
+<div id="delete-modal-backdrop" class="fixed inset-0 z-50 overflow-y-auto bg-black/70 flex items-center justify-center p-4">
+    <div class="bg-[#24242b] border border-[#3f3f46] rounded-xl shadow-2xl max-w-md w-full p-6 text-left"
+         onclick="event.stopPropagation()">
+        
+        <!-- Header -->
+        <div class="flex items-center gap-3 mb-3">
+            <div class="p-2 rounded-lg bg-red-950/50 border border-red-800/60 text-[#ef4444] shrink-0">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+            </div>
+            <div>
+                <h3 class="text-lg font-bold text-[#f4f4f5]">
+                    {% if item_type == 'job' %}
+                    Delete Playlist
+                    {% else %}
+                    Delete Track
+                    {% endif %}
+                </h3>
+                <p class="text-xs text-[#a1a1aa] truncate max-w-xs">{{ title }}</p>
+            </div>
+        </div>
+
+        <!-- Body & Sizing Info -->
+        <div class="my-4 bg-[#1e1e24] p-3.5 rounded-lg border border-[#3f3f46] space-y-2">
+            <div class="flex items-center justify-between text-xs">
+                <span class="text-[#a1a1aa]">Scope:</span>
+                <span class="text-[#f4f4f5] font-medium">
+                    {% if item_type == 'job' %}
+                    {{ file_count }} {% if file_count == 1 %}file{% else %}files{% endif %}
+                    {% else %}
+                    1 file
+                    {% endif %}
+                </span>
+            </div>
+            <div class="flex items-center justify-between text-xs">
+                <span class="text-[#a1a1aa]">Disk Space:</span>
+                <span class="font-mono font-medium {% if total_bytes > 0 %}text-[#ef4444]{% else %}text-zinc-400{% endif %}">
+                    {% if total_bytes > 0 %}
+                    {{ formatted_size }}
+                    {% else %}
+                    0 B (file not found on disk)
+                    {% endif %}
+                </span>
+            </div>
+            <p class="text-[11px] text-[#a1a1aa] pt-1 border-t border-[#3f3f46]/60">
+                {% if item_type == 'job' %}
+                Deleting this playlist will permanently remove physical media files from disk and update history status.
+                {% else %}
+                Deleting this track will permanently remove physical media from disk and mark it as deleted.
+                {% endif %}
+            </p>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="pt-3 flex justify-end gap-3 border-t border-[#3f3f46]">
+            <button type="button" 
+                    onclick="document.getElementById('modal-container').innerHTML = '';"
+                    class="px-4 py-2 rounded-lg text-xs font-medium text-[#a1a1aa] hover:text-[#f4f4f5] bg-[#1e1e24] border border-[#3f3f46] hover:bg-[#3f3f46] transition-colors">
+                Cancel
+            </button>
+            <button type="button"
+                    hx-post="{{ delete_url }}"
+                    hx-target="#tracks-table-container"
+                    hx-include="#history-filter-form"
+                    hx-swap="innerHTML"
+                    onclick="document.getElementById('modal-container').innerHTML = '';"
+                    class="px-4 py-2 rounded-lg text-xs font-bold text-white bg-[#ef4444] hover:bg-red-600 transition-colors shadow-md flex items-center gap-1.5">
+                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+                Delete from Disk
+            </button>
+        </div>
+    </div>
+</div>
