@@ -1,5 +1,6 @@
 import json
 import os
+import queue
 import re
 import shutil
 import socket
@@ -16,6 +17,37 @@ from collections.abc import Callable
 from typing import Any, Self
 
 ProgressCallback = Callable[[str, int, int, str], None]
+
+_main_dispatch_queue: queue.Queue[Callable[[], None]] = queue.Queue()
+_main_dispatch_active: bool = False
+
+
+def set_main_dispatch_active(active: bool) -> None:
+    """Enables or disables main thread queue dispatching."""
+    global _main_dispatch_active
+    _main_dispatch_active = active
+
+
+def dispatch_to_main_thread(fn: Callable[[], None]) -> None:
+    """Dispatches a callable to be executed on the main thread."""
+    if _main_dispatch_active and threading.current_thread() is not threading.main_thread():
+        _main_dispatch_queue.put(fn)
+    else:
+        fn()
+
+
+def drain_main_dispatch_queue() -> int:
+    """Drains and executes all pending tasks in the main dispatch queue."""
+    count = 0
+    while not _main_dispatch_queue.empty():
+        try:
+            task = _main_dispatch_queue.get_nowait()
+            task()
+            count += 1
+        except queue.Empty:
+            break
+    return count
+
 
 
 class UpdateResult(tuple):
@@ -624,13 +656,15 @@ def download_and_apply_update(
         return UpdateResult(False, err_msg)
 
 
-def relaunch_launcher(project_dir: str | None = None) -> None:
+def relaunch_launcher(project_dir: str | None = None, no_browser: bool = True) -> None:
     """Spawns a new instance of LocalTune launcher and exits current process."""
     if project_dir is None:
         project_dir = get_project_dir() or get_base_dir()
     python_exe = get_python_executable(project_dir) or sys.executable
     launcher_target = sys.executable if getattr(sys, "frozen", False) else python_exe
     args = [launcher_target] if getattr(sys, "frozen", False) else [launcher_target, os.path.abspath(__file__)]
+    if no_browser:
+        args.append("--no-browser")
     try:
         subprocess.Popen(args, cwd=project_dir, creationflags=SUBPROCESS_CREATIONFLAGS)
     except Exception:
@@ -647,6 +681,7 @@ def show_update_dialog(
     on_skip: Callable[[], None] | None = None,
     on_restart: Callable[..., Any] | None = None,
     supervisor: Any = None,
+    tray: Any = None,
     project_dir: str | None = None,
     root: Any = None,
 ) -> dict[str, Any]:
@@ -707,7 +742,7 @@ def show_update_dialog(
         elif supervisor is not None and hasattr(supervisor, "start"):
             supervisor.start(open_browser=True, check_updates=False)
         else:
-            relaunch_launcher(project_dir)
+            relaunch_launcher(project_dir, no_browser=False)
 
     def handle_exit() -> None:
         if should_destroy_root and root is not None:
@@ -720,6 +755,24 @@ def show_update_dialog(
         sys.exit(0)
 
     def handle_retry() -> None:
+        active_tray = tray or (supervisor.tray if supervisor is not None and hasattr(supervisor, "tray") else None)
+        if active_tray is not None:
+            if hasattr(active_tray, "stop_icon"):
+                try:
+                    active_tray.stop_icon()
+                except Exception:
+                    pass
+            elif hasattr(active_tray, "icon") and active_tray.icon and hasattr(active_tray.icon, "stop"):
+                try:
+                    active_tray.icon.stop()
+                except Exception:
+                    pass
+            elif hasattr(active_tray, "stop"):
+                try:
+                    active_tray.stop()
+                except Exception:
+                    pass
+
         if supervisor is not None and hasattr(supervisor, "stop_backend"):
             try:
                 supervisor.stop_backend()
@@ -731,14 +784,34 @@ def show_update_dialog(
             handle_manual()
 
     def handle_update() -> None:
-        if on_update:
-            on_update()
-            return
+        active_tray = tray or (supervisor.tray if supervisor is not None and hasattr(supervisor, "tray") else None)
+        if active_tray is not None:
+            if hasattr(active_tray, "stop_icon"):
+                try:
+                    active_tray.stop_icon()
+                except Exception:
+                    pass
+            elif hasattr(active_tray, "icon") and active_tray.icon and hasattr(active_tray.icon, "stop"):
+                try:
+                    active_tray.icon.stop()
+                except Exception:
+                    pass
+            elif hasattr(active_tray, "stop"):
+                try:
+                    active_tray.stop()
+                except Exception:
+                    pass
+
         if supervisor is not None and hasattr(supervisor, "stop_backend"):
             try:
                 supervisor.stop_backend()
             except Exception:
                 pass
+
+        if on_update:
+            on_update()
+            return
+
         if download_url:
             start_download_flow()
         else:
@@ -776,7 +849,12 @@ def show_update_dialog(
                             root.destroy()
                         except Exception:
                             pass
-                    relaunch_launcher(project_dir)
+                    if supervisor is not None and hasattr(supervisor, "lock") and supervisor.lock:
+                        try:
+                            supervisor.lock.release()
+                        except Exception:
+                            pass
+                    relaunch_launcher(project_dir, no_browser=True)
                     sys.exit(0)
                 elif phase == "aborted":
                     transition_to("POST_ABORT_RECOVERY")
@@ -1669,6 +1747,7 @@ class LocalTuneSupervisor:
         self.lock = SingleInstanceLock()
         self.backend_proc: subprocess.Popen[str] | None = None
         self.log_thread: threading.Thread | None = None
+        self.tray: Any = None
         cleanup_old_executables(self.project_dir)
 
     def acquire_lock(self) -> bool:
@@ -1729,6 +1808,7 @@ class LocalTuneSupervisor:
             release_url=release_url,
             download_url=download_url,
             supervisor=self,
+            tray=self.tray,
             project_dir=self.project_dir,
             on_manual=on_manual,
             on_skip=on_skip,
@@ -1746,31 +1826,37 @@ class LocalTuneSupervisor:
             local_tag = get_local_version(self.project_dir)
 
             if not info or not is_newer_version(str(info.get("tag_name", "")), local_tag):
-                if tk is not None and messagebox is not None:
-                    info_root = tk.Tk()
-                    info_root.withdraw()
-                    info_root.attributes("-topmost", True)
-                    messagebox.showinfo(
-                        "LocalTune Update Check",
-                        f"You are already running the latest version ({local_tag}).",
-                        parent=info_root,
-                    )
-                    info_root.destroy()
+                def show_info() -> None:
+                    if tk is not None and messagebox is not None:
+                        info_root = tk.Tk()
+                        info_root.withdraw()
+                        info_root.attributes("-topmost", True)
+                        messagebox.showinfo(
+                            "LocalTune Update Check",
+                            f"You are already running the latest version ({local_tag}).",
+                            parent=info_root,
+                        )
+                        info_root.destroy()
+                dispatch_to_main_thread(show_info)
                 return
 
             remote_tag = str(info.get("tag_name", ""))
             release_url = str(info.get("html_url", "https://github.com/Reimaris/LocalTune/releases"))
             download_url = get_release_zip_url(info)
 
-            show_update_dialog(
-                remote_tag=remote_tag,
-                local_tag=local_tag,
-                release_url=release_url,
-                download_url=download_url,
-                supervisor=self,
-                project_dir=self.project_dir,
-                on_restart=self.restart_backend,
-            )
+            def show_dialog() -> None:
+                show_update_dialog(
+                    remote_tag=remote_tag,
+                    local_tag=local_tag,
+                    release_url=release_url,
+                    download_url=download_url,
+                    supervisor=self,
+                    tray=self.tray,
+                    project_dir=self.project_dir,
+                    on_restart=self.restart_backend,
+                )
+
+            dispatch_to_main_thread(show_dialog)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -2039,6 +2125,8 @@ class LocalTuneTray:
         self.supervisor = supervisor
         self.icon_image = icon_image or load_tray_icon()
         self.icon: Any = None
+        if hasattr(self.supervisor, "tray"):
+            self.supervisor.tray = self
 
     def setup(self) -> Any:
         """Initializes the pystray Icon instance."""
@@ -2055,6 +2143,14 @@ class LocalTuneTray:
         )
         return self.icon
 
+    def stop_icon(self) -> None:
+        """Stops the pystray icon and removes it from the system tray without stopping the supervisor."""
+        if self.icon and hasattr(self.icon, "stop"):
+            try:
+                self.icon.stop()
+            except Exception:
+                pass
+
     def run(self) -> None:
         """Runs the system tray event loop."""
         if not self.icon:
@@ -2064,30 +2160,46 @@ class LocalTuneTray:
 
     def stop(self) -> None:
         """Stops the system tray icon and terminates the supervisor."""
-        if self.icon and hasattr(self.icon, "stop"):
-            try:
-                self.icon.stop()
-            except Exception:
-                pass
+        self.stop_icon()
         self.supervisor.stop()
 
 
 def main() -> None:
+    open_browser = "--no-browser" not in sys.argv
     supervisor = LocalTuneSupervisor()
-    if supervisor.start(open_browser=True):
-        if pystray is not None:
-            tray = LocalTuneTray(supervisor)
-            try:
-                tray.run()
-            except KeyboardInterrupt:
-                tray.stop()
-        else:
-            try:
-                while True:
-                    time.sleep(1)
-            except KeyboardInterrupt:
-                supervisor.stop()
+    if supervisor.start(open_browser=open_browser):
+        set_main_dispatch_active(True)
+        try:
+            if pystray is not None:
+                tray = LocalTuneTray(supervisor)
+                supervisor.tray = tray
+                tray_thread = threading.Thread(target=tray.run, daemon=True)
+                tray_thread.start()
+                try:
+                    while True:
+                        try:
+                            task = _main_dispatch_queue.get(timeout=0.2)
+                            task()
+                        except queue.Empty:
+                            if not tray_thread.is_alive() and supervisor.backend_proc is None:
+                                break
+                except KeyboardInterrupt:
+                    tray.stop()
+            else:
+                try:
+                    while True:
+                        try:
+                            task = _main_dispatch_queue.get(timeout=0.2)
+                            task()
+                        except queue.Empty:
+                            if supervisor.backend_proc is None:
+                                break
+                except KeyboardInterrupt:
+                    supervisor.stop()
+        finally:
+            set_main_dispatch_active(False)
 
 
 if __name__ == "__main__":
     main()
+
