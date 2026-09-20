@@ -173,7 +173,7 @@
                             hx-post="/api/tracks/{{ track.id }}/retry"
                             hx-target="#tracks-table-container"
                             hx-include="#history-filter-form"
-                            hx-swap="innerHTML">
+                            hx-swap="morph">
                             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                         </button>
                         {% endif %}
@@ -182,7 +182,7 @@
                             hx-post="/api/tracks/{{ track.id }}/abort"
                             hx-target="#tracks-table-container"
                             hx-include="#history-filter-form"
-                            hx-swap="innerHTML">
+                            hx-swap="morph">
                             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                         </button>
                         {% elif track.status == 'Deleted' %}
@@ -236,7 +236,7 @@
                             @click.stop
                             hx-target="#tracks-table-container"
                             hx-include="#history-filter-form"
-                            hx-swap="innerHTML">
+                            hx-swap="morph">
                             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                         </button>
                         {% endif %}
@@ -246,7 +246,7 @@
                             @click.stop
                             hx-target="#tracks-table-container"
                             hx-include="#history-filter-form"
-                            hx-swap="innerHTML">
+                            hx-swap="morph">
                             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                         </button>
                         {% elif item.status == 'Deleted' %}
@@ -255,7 +255,7 @@
                             @click.stop
                             hx-target="#tracks-table-container"
                             hx-include="#history-filter-form"
-                            hx-swap="innerHTML">
+                            hx-swap="morph">
                             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                         </button>
                         {% else %}
@@ -301,7 +301,7 @@
                             hx-post="/api/tracks/{{ track.id }}/retry"
                             hx-target="#tracks-table-container"
                             hx-include="#history-filter-form"
-                            hx-swap="innerHTML">
+                            hx-swap="morph">
                             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                         </button>
                         {% endif %}
@@ -310,7 +310,7 @@
                             hx-post="/api/tracks/{{ track.id }}/abort"
                             hx-target="#tracks-table-container"
                             hx-include="#history-filter-form"
-                            hx-swap="innerHTML">
+                            hx-swap="morph">
                             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                         </button>
                         {% elif track.status == 'Deleted' %}

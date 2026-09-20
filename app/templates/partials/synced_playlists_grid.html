@@ -125,3 +125,12 @@
     {% endfor %}
 </div>
 {% endif %}
+
+{% if has_active_sync %}
+<div id="synced-playlists-polling-trigger"
+    hx-get="/api/synced-playlists"
+    hx-trigger="load delay:2s"
+    hx-target="#synced-playlists-container"
+    hx-swap="morph"
+    class="hidden"></div>
+{% endif %}

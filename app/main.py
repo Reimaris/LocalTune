@@ -22,7 +22,7 @@ from fastapi import (
     HTTPException,
     Request,
 )
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import String, and_, case, cast, func, or_, text
@@ -497,12 +497,15 @@ async def download_url(
     else:
         msg = f"Job queued for {url} (ID: {job_id})"
 
-    return f"""
-    <div class="bg-emerald-900 border border-emerald-700 text-white px-4 py-3 rounded relative mb-4" role="alert">
-      <strong class="font-bold">Success!</strong>
-      <span class="block sm:inline">{msg}</span>
-    </div>
-    """
+    return HTMLResponse(
+        content=f"""
+        <div class="bg-emerald-900 border border-emerald-700 text-white px-4 py-3 rounded relative mb-4" role="alert">
+          <strong class="font-bold">Success!</strong>
+          <span class="block sm:inline">{msg}</span>
+        </div>
+        """,
+        headers={"HX-Trigger": "refreshTracks"},
+    )
 
 
 @app.get("/settings", response_class=HTMLResponse)
@@ -1354,18 +1357,28 @@ async def retry_job(
 # SYNCED PLAYLISTS API ENDPOINTS
 
 
-@app.get("/api/synced-playlists", response_class=HTMLResponse)
-async def get_synced_playlists(request: Request, db: Session = Depends(get_db)):
-    """Returns HTMX partial grid of Synced Playlists."""
+def _render_synced_playlists(request: Request, db: Session) -> Response:
+    """Returns HTMX partial grid of Synced Playlists with has_active_sync status flag."""
     synced_playlists = (
         db.query(models.SyncedPlaylist)
         .order_by(models.SyncedPlaylist.created_at.desc())
         .all()
     )
+    has_active_sync = any(sp.status == "Syncing" for sp in synced_playlists)
     return templates.TemplateResponse(
         "partials/synced_playlists_grid.html",
-        {"request": request, "synced_playlists": synced_playlists},
+        {
+            "request": request,
+            "synced_playlists": synced_playlists,
+            "has_active_sync": has_active_sync,
+        },
     )
+
+
+@app.get("/api/synced-playlists", response_class=HTMLResponse)
+async def get_synced_playlists(request: Request, db: Session = Depends(get_db)):
+    """Returns HTMX partial grid of Synced Playlists."""
+    return _render_synced_playlists(request, db)
 
 
 @app.post("/api/synced-playlists", response_class=HTMLResponse)
@@ -1414,15 +1427,7 @@ async def add_synced_playlist(
 
     background_tasks.add_task(process_playlist_sync, int(str(playlist_id)))
 
-    synced_playlists = (
-        db.query(models.SyncedPlaylist)
-        .order_by(models.SyncedPlaylist.created_at.desc())
-        .all()
-    )
-    return templates.TemplateResponse(
-        "partials/synced_playlists_grid.html",
-        {"request": request, "synced_playlists": synced_playlists},
-    )
+    return _render_synced_playlists(request, db)
 
 
 @app.post("/api/synced-playlists/{playlist_id}/sync", response_class=HTMLResponse)
@@ -1443,15 +1448,7 @@ async def manual_sync_playlist(
         db.commit()
         background_tasks.add_task(process_playlist_sync, playlist_id)
 
-    synced_playlists = (
-        db.query(models.SyncedPlaylist)
-        .order_by(models.SyncedPlaylist.created_at.desc())
-        .all()
-    )
-    return templates.TemplateResponse(
-        "partials/synced_playlists_grid.html",
-        {"request": request, "synced_playlists": synced_playlists},
-    )
+    return _render_synced_playlists(request, db)
 
 
 @app.post("/api/synced-playlists/{playlist_id}/toggle", response_class=HTMLResponse)
@@ -1469,15 +1466,7 @@ async def toggle_sync_playlist(
         sp.status = "Active" if sp.is_active else "Paused"
         db.commit()
 
-    synced_playlists = (
-        db.query(models.SyncedPlaylist)
-        .order_by(models.SyncedPlaylist.created_at.desc())
-        .all()
-    )
-    return templates.TemplateResponse(
-        "partials/synced_playlists_grid.html",
-        {"request": request, "synced_playlists": synced_playlists},
-    )
+    return _render_synced_playlists(request, db)
 
 
 @app.put("/api/synced-playlists/{playlist_id}", response_class=HTMLResponse)
@@ -1499,15 +1488,7 @@ async def update_synced_playlist(
         sp.sync_mode = sync_mode
         db.commit()
 
-    synced_playlists = (
-        db.query(models.SyncedPlaylist)
-        .order_by(models.SyncedPlaylist.created_at.desc())
-        .all()
-    )
-    return templates.TemplateResponse(
-        "partials/synced_playlists_grid.html",
-        {"request": request, "synced_playlists": synced_playlists},
-    )
+    return _render_synced_playlists(request, db)
 
 
 @app.delete("/api/synced-playlists/{playlist_id}", response_class=HTMLResponse)
@@ -1577,15 +1558,7 @@ async def delete_synced_playlist(
         db.delete(sp)
         db.commit()
 
-    synced_playlists = (
-        db.query(models.SyncedPlaylist)
-        .order_by(models.SyncedPlaylist.created_at.desc())
-        .all()
-    )
-    return templates.TemplateResponse(
-        "partials/synced_playlists_grid.html",
-        {"request": request, "synced_playlists": synced_playlists},
-    )
+    return _render_synced_playlists(request, db)
 
 
 @app.get("/api/logs")
