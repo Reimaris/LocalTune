@@ -134,6 +134,7 @@ def retry_single_track(track_db_id: int, db: Session | None = None):
                 file_format=file_format,
                 audio_bitrate=audio_bitrate,
                 target_playlist_title=track.job_title,
+                track_db_id=track_db_id,
             )
         else:
             handle_ytdlp(
@@ -145,6 +146,7 @@ def retry_single_track(track_db_id: int, db: Session | None = None):
                 resolution_cap="best",
                 audio_bitrate=audio_bitrate,
                 target_playlist_title=track.job_title,
+                track_db_id=track_db_id,
             )
     except Exception as e:
         if isinstance(e, subprocess.CalledProcessError) and e.stderr:

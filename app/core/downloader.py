@@ -297,15 +297,22 @@ def insert_download(
     job_title: str | None = None,
     synced_playlist_id: int | None = None,
     source_url: str | None = None,
+    track_db_id: int | None = None,
 ):
     """Inserts or updates a download record in the database."""
-    dl = db.query(models.Download).filter(models.Download.track_id == track_id).first()
+    dl = None
+    if track_db_id is not None:
+        dl = db.query(models.Download).filter(models.Download.id == track_db_id).first()
+    if not dl:
+        dl = db.query(models.Download).filter(models.Download.track_id == track_id).first()
     if dl:
         dl.title = title
         dl.artist = artist
         if file_path:
             dl.file_path = file_path
         dl.status = status
+        if status == "Completed":
+            dl.downloaded_at = datetime.now(timezone.utc)
         if job_id:
             dl.job_id = job_id
         if job_title is not None:
@@ -691,6 +698,7 @@ def handle_spotify(
     synced_playlist_id: int | None = None,
     audio_bitrate: str = "best",
     target_playlist_title: str | None = None,
+    track_db_id: int | None = None,
 ) -> str:
     """Handles Spotify downloads with spotdl, applying delta-sync.
 
@@ -746,12 +754,13 @@ def handle_spotify(
             metadata = json.load(f)
 
         # Delete placeholder now that we have real metadata
-        placeholder = (
-            db.query(models.Download).filter(models.Download.track_id == job_id).first()
-        )
-        if placeholder:
-            db.delete(placeholder)
-            db.commit()
+        if track_db_id is None:
+            placeholder = (
+                db.query(models.Download).filter(models.Download.track_id == job_id).first()
+            )
+            if placeholder:
+                db.delete(placeholder)
+                db.commit()
 
         if not metadata:
             return "Empty URL"
@@ -771,7 +780,17 @@ def handle_spotify(
             raw_id = track.get("song_id")
             track_id = f"spotify_{raw_id}" if raw_id else uuid.uuid4().hex
             track_source_url = f"https://open.spotify.com/track/{raw_id}" if raw_id else url
-            if not check_exists(db, track_id):
+            if track_db_id is not None:
+                existing_track = (
+                    db.query(models.Download)
+                    .filter(models.Download.id == track_db_id)
+                    .first()
+                )
+                if existing_track and existing_track.track_id:
+                    track_id = existing_track.track_id
+                to_download.append((track, track_id, track_source_url))
+                break
+            elif not check_exists(db, track_id):
                 to_download.append((track, track_id, track_source_url))
                 insert_download(
                     db,
@@ -797,35 +816,59 @@ def handle_spotify(
             # Check abort signal before starting each track
             if is_on_demand and download_manager.is_track_aborted(job_id, track_id):
                 logger.info(f"Track {track_id} aborted before download start.")
-                insert_download(
-                    db, track_id,
-                    track.get("name", "Unknown Title"),
-                    track.get("artist", "Unknown Artist"),
-                    None, "Aborted", job_id, job_title_to_save, synced_playlist_id,
-                    source_url=track_source_url,
-                )
+                if track_db_id is not None:
+                    existing_track = (
+                        db.query(models.Download)
+                        .filter(models.Download.id == track_db_id)
+                        .first()
+                    )
+                    if existing_track:
+                        existing_track.status = "Aborted"
+                        db.commit()
+                else:
+                    insert_download(
+                        db, track_id,
+                        track.get("name", "Unknown Title"),
+                        track.get("artist", "Unknown Artist"),
+                        None, "Aborted", job_id, job_title_to_save, synced_playlist_id,
+                        source_url=track_source_url,
+                    )
                 continue
 
             title = track.get("name", "Unknown Title")
             artist = track.get("artist", "Unknown Artist")
-            list_name = track.get("list_name", "")
+            list_name = target_playlist_title or track.get("list_name", "")
             sanitized_title = spotdl_sanitize(title)
             sanitized_artist = spotdl_sanitize(artist)
             sanitized_list_name = spotdl_sanitize(list_name) if list_name else ""
 
             # Elevate active track to Downloading before starting its subprocess
-            insert_download(
-                db,
-                track_id,
-                title,
-                artist,
-                None,
-                "Downloading",
-                job_id,
-                job_title_to_save,
-                synced_playlist_id,
-                source_url=track_source_url,
-            )
+            if track_db_id is not None:
+                existing_track = (
+                    db.query(models.Download)
+                    .filter(models.Download.id == track_db_id)
+                    .first()
+                )
+                if existing_track:
+                    existing_track.status = "Downloading"
+                    if title and title != "Unknown Title":
+                        existing_track.title = title
+                    if artist and artist != "Unknown Artist":
+                        existing_track.artist = artist
+                    db.commit()
+            else:
+                insert_download(
+                    db,
+                    track_id,
+                    title,
+                    artist,
+                    None,
+                    "Downloading",
+                    job_id,
+                    job_title_to_save,
+                    synced_playlist_id,
+                    source_url=track_source_url,
+                )
 
             staging_dir = ensure_staging_dir(DOWNLOAD_DIR)
 
@@ -914,11 +957,21 @@ def handle_spotify(
                     output_path=str(staged_file),
                     temp_files=[track_temp_file],
                 )
-                insert_download(
-                    db, track_id, title, artist, None, "Aborted",
-                    job_id, job_title_to_save, synced_playlist_id,
-                    source_url=track_source_url,
-                )
+                if track_db_id is not None:
+                    existing_track = (
+                        db.query(models.Download)
+                        .filter(models.Download.id == track_db_id)
+                        .first()
+                    )
+                    if existing_track:
+                        existing_track.status = "Aborted"
+                        db.commit()
+                else:
+                    insert_download(
+                        db, track_id, title, artist, None, "Aborted",
+                        job_id, job_title_to_save, synced_playlist_id,
+                        source_url=track_source_url,
+                    )
                 if is_on_demand and os.path.exists(track_temp_file):
                     os.remove(track_temp_file)
                 continue
@@ -928,22 +981,48 @@ def handle_spotify(
                 os.makedirs(os.path.dirname(final_file_path), exist_ok=True)
                 os.replace(str(staged_file), final_file_path)
                 fix_permissions(Path(final_file_path))
-                insert_download(
-                    db, track_id, title, artist, final_file_path, "Completed",
-                    job_id, job_title_to_save, synced_playlist_id,
-                    source_url=track_source_url,
-                )
+                if track_db_id is not None:
+                    existing_track = (
+                        db.query(models.Download)
+                        .filter(models.Download.id == track_db_id)
+                        .first()
+                    )
+                    if existing_track:
+                        existing_track.status = "Completed"
+                        existing_track.file_path = final_file_path
+                        existing_track.downloaded_at = datetime.now(timezone.utc)
+                        if title and title != "Unknown Title":
+                            existing_track.title = title
+                        if artist and artist != "Unknown Artist":
+                            existing_track.artist = artist
+                        db.commit()
+                else:
+                    insert_download(
+                        db, track_id, title, artist, final_file_path, "Completed",
+                        job_id, job_title_to_save, synced_playlist_id,
+                        source_url=track_source_url,
+                    )
             else:
                 logger.error(f"spotdl output file not found in staging: {staged_file}")
                 cleanup_partial_files(
                     output_path=str(staged_file),
                     temp_files=[track_temp_file],
                 )
-                insert_download(
-                    db, track_id, title, artist, None, "Failed",
-                    job_id, job_title_to_save, synced_playlist_id,
-                    source_url=track_source_url,
-                )
+                if track_db_id is not None:
+                    existing_track = (
+                        db.query(models.Download)
+                        .filter(models.Download.id == track_db_id)
+                        .first()
+                    )
+                    if existing_track:
+                        existing_track.status = "Failed"
+                        db.commit()
+                else:
+                    insert_download(
+                        db, track_id, title, artist, None, "Failed",
+                        job_id, job_title_to_save, synced_playlist_id,
+                        source_url=track_source_url,
+                    )
 
             if os.path.exists(track_temp_file):
                 os.remove(track_temp_file)
@@ -973,6 +1052,7 @@ def handle_ytdlp(
     resolution_cap: str = "best",
     audio_bitrate: str = "best",
     target_playlist_title: str | None = None,
+    track_db_id: int | None = None,
 ) -> str:
     """Handles generic yt-dlp downloads for non-Spotify URLs (YouTube, SoundCloud, Bandcamp, etc.).
 
@@ -1043,12 +1123,13 @@ def handle_ytdlp(
                 raise RuntimeError(f"yt-dlp metadata extraction failed: {err_msg}")
 
         # Delete placeholder now that we have real metadata
-        placeholder = (
-            db.query(models.Download).filter(models.Download.track_id == job_id).first()
-        )
-        if placeholder:
-            db.delete(placeholder)
-            db.commit()
+        if track_db_id is None:
+            placeholder = (
+                db.query(models.Download).filter(models.Download.track_id == job_id).first()
+            )
+            if placeholder:
+                db.delete(placeholder)
+                db.commit()
 
         to_download = []
         metadata = json.loads(result.stdout)
@@ -1088,7 +1169,17 @@ def handle_ytdlp(
                 else:
                     track_source_url = url
 
-            if not check_exists(db, track_id):
+            if track_db_id is not None:
+                existing_track = (
+                    db.query(models.Download)
+                    .filter(models.Download.id == track_db_id)
+                    .first()
+                )
+                if existing_track and existing_track.track_id:
+                    track_id = existing_track.track_id
+                to_download.append((track, track_id, track_source_url))
+                break
+            elif not check_exists(db, track_id):
                 to_download.append((track, track_id, track_source_url))
                 insert_download(
                     db,
@@ -1115,13 +1206,23 @@ def handle_ytdlp(
             # Check abort signal before starting each track
             if is_on_demand and download_manager.is_track_aborted(job_id, track_id):
                 logger.info(f"Track {track_id} aborted before download start.")
-                title = track.get("title", "Unknown Title")
-                artist = track.get("uploader") or track.get("artist") or "Unknown Artist"
-                insert_download(
-                    db, track_id, title, artist, None, "Aborted",
-                    job_id, job_title_to_save, synced_playlist_id,
-                    source_url=track_source_url,
-                )
+                if track_db_id is not None:
+                    existing_track = (
+                        db.query(models.Download)
+                        .filter(models.Download.id == track_db_id)
+                        .first()
+                    )
+                    if existing_track:
+                        existing_track.status = "Aborted"
+                        db.commit()
+                else:
+                    title = track.get("title", "Unknown Title")
+                    artist = track.get("uploader") or track.get("artist") or "Unknown Artist"
+                    insert_download(
+                        db, track_id, title, artist, None, "Aborted",
+                        job_id, job_title_to_save, synced_playlist_id,
+                        source_url=track_source_url,
+                    )
                 continue
 
             title = track.get("title", "Unknown Title")
@@ -1129,18 +1230,32 @@ def handle_ytdlp(
             sanitized_title = yt_dlp_sanitize(title)
 
             # Elevate active track to Downloading before starting its subprocess
-            insert_download(
-                db,
-                track_id,
-                title,
-                artist,
-                None,
-                "Downloading",
-                job_id,
-                job_title_to_save,
-                synced_playlist_id,
-                source_url=track_source_url,
-            )
+            if track_db_id is not None:
+                existing_track = (
+                    db.query(models.Download)
+                    .filter(models.Download.id == track_db_id)
+                    .first()
+                )
+                if existing_track:
+                    existing_track.status = "Downloading"
+                    if title and title != "Unknown Title":
+                        existing_track.title = title
+                    if artist and artist != "Unknown Artist":
+                        existing_track.artist = artist
+                    db.commit()
+            else:
+                insert_download(
+                    db,
+                    track_id,
+                    title,
+                    artist,
+                    None,
+                    "Downloading",
+                    job_id,
+                    job_title_to_save,
+                    synced_playlist_id,
+                    source_url=track_source_url,
+                )
 
             staging_dir = ensure_staging_dir(DOWNLOAD_DIR)
 
@@ -1257,44 +1372,80 @@ def handle_ytdlp(
             if aborted:
                 logger.info(f"Track {track_id} aborted — cleaning up partial files.")
                 cleanup_partial_files(output_path=str(staged_file))
-                insert_download(
-                    db, track_id, title, artist, None, "Aborted",
-                    job_id, job_title_to_save, synced_playlist_id,
-                )
+                if track_db_id is not None:
+                    existing_track = (
+                        db.query(models.Download)
+                        .filter(models.Download.id == track_db_id)
+                        .first()
+                    )
+                    if existing_track:
+                        existing_track.status = "Aborted"
+                        db.commit()
+                else:
+                    insert_download(
+                        db, track_id, title, artist, None, "Aborted",
+                        job_id, job_title_to_save, synced_playlist_id,
+                    )
                 continue
 
             if staged_file.exists():
                 os.makedirs(os.path.dirname(final_file_path), exist_ok=True)
                 os.replace(str(staged_file), final_file_path)
                 fix_permissions(Path(final_file_path))
-                insert_download(
-                    db,
-                    track_id,
-                    title,
-                    artist,
-                    final_file_path,
-                    "Completed",
-                    job_id,
-                    job_title_to_save,
-                    synced_playlist_id,
-                    source_url=track_source_url,
-                )
+                if track_db_id is not None:
+                    existing_track = (
+                        db.query(models.Download)
+                        .filter(models.Download.id == track_db_id)
+                        .first()
+                    )
+                    if existing_track:
+                        existing_track.status = "Completed"
+                        existing_track.file_path = final_file_path
+                        existing_track.downloaded_at = datetime.now(timezone.utc)
+                        if title and title != "Unknown Title":
+                            existing_track.title = title
+                        if artist and artist != "Unknown Artist":
+                            existing_track.artist = artist
+                        db.commit()
+                else:
+                    insert_download(
+                        db,
+                        track_id,
+                        title,
+                        artist,
+                        final_file_path,
+                        "Completed",
+                        job_id,
+                        job_title_to_save,
+                        synced_playlist_id,
+                        source_url=track_source_url,
+                    )
             else:
                 failed_count += 1
                 logger.error(f"Download output file not found in staging: {staged_file}.")
                 cleanup_partial_files(output_path=str(staged_file))
-                insert_download(
-                    db,
-                    track_id,
-                    title,
-                    artist,
-                    None,
-                    "Failed",
-                    job_id,
-                    job_title_to_save,
-                    synced_playlist_id,
-                    source_url=track_source_url,
-                )
+                if track_db_id is not None:
+                    existing_track = (
+                        db.query(models.Download)
+                        .filter(models.Download.id == track_db_id)
+                        .first()
+                    )
+                    if existing_track:
+                        existing_track.status = "Failed"
+                        db.commit()
+                else:
+                    insert_download(
+                        db,
+                        track_id,
+                        title,
+                        artist,
+                        None,
+                        "Failed",
+                        job_id,
+                        job_title_to_save,
+                        synced_playlist_id,
+                        source_url=track_source_url,
+                    )
 
         if failed_count == len(to_download):
             raise RuntimeError("All yt-dlp track downloads failed: no output files found on disk.")

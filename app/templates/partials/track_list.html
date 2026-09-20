@@ -144,7 +144,7 @@
         {% if item.type == 'track' %}
             {% set track = item.item %}
             <tbody class="divide-y divide-[#3f3f46] text-sm">
-                <tr class="hover:bg-[#2a2a32] transition-colors group">
+                <tr id="track-{{ track.id }}" class="hover:bg-[#2a2a32] transition-colors group">
                     <td class="px-6 py-4 break-words">
                         <div class="inline-flex items-center gap-1.5 flex-wrap">
                             <span class="font-bold text-white">{{ track.title }}</span>
@@ -272,7 +272,7 @@
 
                 <!-- Child Track Rows -->
                 {% for track in item.tracks %}
-                <tr class="hover:bg-[#3f3f46] transition-colors group bg-[#16161b]" x-show="expandedPlaylists['{{ item.job_id }}']" x-cloak>
+                <tr id="track-{{ track.id }}" class="hover:bg-[#3f3f46] transition-colors group bg-[#16161b]" x-show="expandedPlaylists['{{ item.job_id }}']" x-cloak>
                     <td class="px-6 py-4 pl-14 break-words">
                         <div class="inline-flex items-center gap-1.5 flex-wrap">
                             <span class="font-medium text-white">{{ track.title }}</span>
