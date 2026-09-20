@@ -8,6 +8,7 @@ Synced Playlist jobs are intentionally excluded from abort capabilities.
 import glob
 import logging
 import os
+import shutil
 import subprocess
 import threading
 from pathlib import Path
@@ -206,7 +207,8 @@ download_manager = DownloadManager()
 
 
 def cleanup_all_partial_files(download_dir: str | Path | None = None) -> int:
-    """Recursively remove all in-flight .part and .ytdl files and root temp_*.spotdl files.
+    """Recursively remove all in-flight .part and .ytdl files, root temp_*.spotdl files,
+    and all stale files inside <DOWNLOAD_DIR>/.temp staging directory.
 
     Returns the count of removed partial files.
     """
@@ -215,6 +217,23 @@ def cleanup_all_partial_files(download_dir: str | Path | None = None) -> int:
     target_dir = str(download_dir or DOWNLOAD_DIR)
     removed_count = 0
     if os.path.isdir(target_dir):
+        # 1. Clean all files and directories in .temp staging directory
+        temp_dir = os.path.join(target_dir, ".temp")
+        if os.path.isdir(temp_dir):
+            for item in os.listdir(temp_dir):
+                item_path = os.path.join(temp_dir, item)
+                try:
+                    if os.path.isdir(item_path):
+                        shutil.rmtree(item_path)
+                        removed_count += 1
+                    else:
+                        os.remove(item_path)
+                        removed_count += 1
+                        logger.debug(f"Removed staging file: {item_path}")
+                except OSError as e:
+                    logger.warning(f"Failed to remove staging file {item_path}: {e}")
+
+        # 2. Walk rest of target_dir for any stray .part and .ytdl files
         for root, _, files in os.walk(target_dir):
             for f in files:
                 if f.endswith((".part", ".ytdl")):

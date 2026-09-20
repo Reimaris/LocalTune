@@ -678,7 +678,10 @@ def handle_spotify(
                 source_url=track_source_url,
             )
 
-            file_path = (
+            staging_dir = Path(DOWNLOAD_DIR) / ".temp"
+            staging_dir.mkdir(parents=True, exist_ok=True)
+
+            final_file_path = (
                 f"{DOWNLOAD_DIR}/{sanitized_list_name}/{sanitized_artist} - {sanitized_title}.{file_format}"
                 if list_name
                 else f"{DOWNLOAD_DIR}/{sanitized_artist} - {sanitized_title}.{file_format}"
@@ -697,9 +700,7 @@ def handle_spotify(
                     "extractor-args=youtube:player_client=android,web,ios",
                     track_temp_file,
                     "--output",
-                    f"{DOWNLOAD_DIR}/{{list-name}}/{{artist}} - {{title}}.{file_format}"
-                    if list_name
-                    else f"{DOWNLOAD_DIR}/{{artist}} - {{title}}.{file_format}",
+                    f"{staging_dir}/{{artist}} - {{title}}.{file_format}",
                     "--format",
                     file_format,
                     "--bitrate",
@@ -749,10 +750,20 @@ def handle_spotify(
                 else:
                     logger.error(f"spotdl failed for track {track_id}: {e}")
 
+            staged_file = staging_dir / f"{sanitized_artist} - {sanitized_title}.{file_format}"
+            if not staged_file.exists():
+                matching_files = [
+                    staging_dir / f
+                    for f in (os.listdir(staging_dir) if staging_dir.exists() else [])
+                    if f.endswith(f".{file_format}") and sanitized_title[:20].lower() in f.lower()
+                ]
+                if matching_files:
+                    staged_file = matching_files[0]
+
             if aborted:
                 logger.info(f"Track {track_id} aborted — cleaning up partial files.")
                 cleanup_partial_files(
-                    output_path=file_path,
+                    output_path=str(staged_file),
                     temp_files=[track_temp_file],
                 )
                 insert_download(
@@ -764,15 +775,22 @@ def handle_spotify(
                     os.remove(track_temp_file)
                 continue
 
-            # Mark completed if file exists on disk
-            if os.path.exists(file_path):
+            # Atomically promote staged file to final library destination if it exists
+            if staged_file.exists():
+                os.makedirs(os.path.dirname(final_file_path), exist_ok=True)
+                os.replace(str(staged_file), final_file_path)
+                fix_permissions(Path(final_file_path))
                 insert_download(
-                    db, track_id, title, artist, file_path, "Completed",
+                    db, track_id, title, artist, final_file_path, "Completed",
                     job_id, job_title_to_save, synced_playlist_id,
                     source_url=track_source_url,
                 )
             else:
-                logger.error(f"spotdl output file not found: {file_path}")
+                logger.error(f"spotdl output file not found in staging: {staged_file}")
+                cleanup_partial_files(
+                    output_path=str(staged_file),
+                    temp_files=[track_temp_file],
+                )
                 insert_download(
                     db, track_id, title, artist, None, "Failed",
                     job_id, job_title_to_save, synced_playlist_id,
@@ -972,21 +990,20 @@ def handle_ytdlp(
                 source_url=track_source_url,
             )
 
-            file_path = (
+            staging_dir = Path(DOWNLOAD_DIR) / ".temp"
+            staging_dir.mkdir(parents=True, exist_ok=True)
+
+            final_file_path = (
                 f"{DOWNLOAD_DIR}/{sanitized_playlist_title}/{sanitized_title}.{file_format}"
-                if is_playlist
+                if is_playlist and sanitized_playlist_title
                 else f"{DOWNLOAD_DIR}/{sanitized_title}.{file_format}"
             )
 
             # Resolve canonical URL for this track
             target_url = track_source_url
 
-            # Build the yt-dlp download command for this single track
-            output_tmpl = (
-                f"{DOWNLOAD_DIR}/{sanitized_playlist_title}/%(title)s.%(ext)s"
-                if is_playlist and sanitized_playlist_title
-                else f"{DOWNLOAD_DIR}/%(title)s.%(ext)s"
-            )
+            # Build the yt-dlp download command for this single track streaming into .temp
+            output_tmpl = f"{staging_dir}/%(title)s.%(ext)s"
             cmd_dl = get_ytdlp_cmd() + ["--ignore-errors"]
             if is_youtube:
                 if media_type == "video":
@@ -1074,36 +1091,37 @@ def handle_ytdlp(
                 else:
                     logger.error(f"yt-dlp failed for track {track_id}: {e}")
 
+            # Locate staged file in staging directory (with sanitization fallback)
+            staged_file = staging_dir / f"{sanitized_title}.{file_format}"
+            if not staged_file.exists():
+                matching_files = [
+                    staging_dir / f
+                    for f in (os.listdir(staging_dir) if staging_dir.exists() else [])
+                    if f.endswith(f".{file_format}")
+                    and sanitized_title[:20].lower() in f.lower()
+                ]
+                if matching_files:
+                    staged_file = matching_files[0]
+
             if aborted:
                 logger.info(f"Track {track_id} aborted — cleaning up partial files.")
-                cleanup_partial_files(output_path=file_path)
+                cleanup_partial_files(output_path=str(staged_file))
                 insert_download(
                     db, track_id, title, artist, None, "Aborted",
                     job_id, job_title_to_save, synced_playlist_id,
                 )
                 continue
 
-            # Verify file on disk (with sanitization fallback)
-            if not os.path.exists(file_path):
-                target_dir = os.path.dirname(file_path)
-                matching_files = [
-                    os.path.join(target_dir, f)
-                    for f in (
-                        os.listdir(target_dir) if os.path.exists(target_dir) else []
-                    )
-                    if f.endswith(f".{file_format}")
-                    and sanitized_title[:20].lower() in f.lower()
-                ]
-                if matching_files:
-                    file_path = matching_files[0]
-
-            if os.path.exists(file_path):
+            if staged_file.exists():
+                os.makedirs(os.path.dirname(final_file_path), exist_ok=True)
+                os.replace(str(staged_file), final_file_path)
+                fix_permissions(Path(final_file_path))
                 insert_download(
                     db,
                     track_id,
                     title,
                     artist,
-                    file_path,
+                    final_file_path,
                     "Completed",
                     job_id,
                     job_title_to_save,
@@ -1112,7 +1130,8 @@ def handle_ytdlp(
                 )
             else:
                 failed_count += 1
-                logger.error(f"Download output file not found: {file_path}.")
+                logger.error(f"Download output file not found in staging: {staged_file}.")
+                cleanup_partial_files(output_path=str(staged_file))
                 insert_download(
                     db,
                     track_id,
